@@ -1,6 +1,8 @@
 import React from "react"
 import * as Icons from "../UI/Icons"
-import superSnoopyImg from "../../assets/super-snoopy.png"
+
+// Ruta directa desde la carpeta public
+const superSnoopyImg = "/assets/super-snoopy.png"
 
 export default function DashboardHeader({ onOcrOpen }) {
   const formattedDate = new Date().toLocaleDateString('es-MX', { 
