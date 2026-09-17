@@ -1,63 +1,27 @@
-import React, { useState } from 'react'
-import DashboardScreen from './components/UI/screens/DashboardScreen'
-import CalendarGrid from './services/CalendarGrid'
-import DayChecklist from './components/Calendar/DayChecklist'
-import AnalyticsScreen from './components/UI/screens/AnalyticsScreen'
-import CanvasNoteScreen from './components/UI/screens/CanvasNoteScreen'
-import Navigation from './components/UI/Navigation'
+import React, { useState } from 'react';
+
+// Importación de las pantallas reales de tu aplicación
+import DashboardScreen from './components/UI/screens/DashboardScreen.jsx';
+import CalendarScreen from './components/UI/screens/CalendarScreen.jsx';
+import AnalyticsScreen from './components/UI/screens/AnalyticsScreen.jsx';
+import Navigation from './components/UI/Navigation.jsx';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('dashboard')
-  const [selectedDate, setSelectedDate] = useState(null)
-  const [activeModal, setActiveModal] = useState(null)
-
-  const handleSelectDay = (dateStr) => {
-    setSelectedDate(dateStr)
-    setActiveModal('checklist')
-  }
-
-  const handleCloseModal = () => {
-    setActiveModal(null)
-    setSelectedDate(null)
-  }
-
-  const handleSwitchToCanvas = () => {
-    setActiveModal('canvas')
-  }
-
-  const handleSwitchToChecklist = () => {
-    setActiveModal('checklist')
-  }
+  const [activeTab, setActiveTab] = useState('finances'); // 'finances' | 'agenda' | 'metrics'
 
   return (
-    <div className="min-h-screen bg-stone-50 pb-24">
-      {activeTab === 'dashboard' && <DashboardScreen />}
+    <div className="min-h-screen bg-[#Fef8e7] font-mono selection:bg-amber-300 relative pb-28">
       
-      {activeTab === 'calendar' && (
-        <div className="min-h-screen p-4 md:p-8 flex items-center justify-center">
-          <CalendarGrid onSelectDay={handleSelectDay} />
-        </div>
-      )}
-      
-      {activeTab === 'analytics' && <AnalyticsScreen />}
+      {/* RENDERIZADO DE LAS PANTALLAS REALES SEGÚN EL BOTÓN DEL FOOTER */}
+      <main>
+        {activeTab === 'finances' && <DashboardScreen />}
+        {activeTab === 'agenda' && <CalendarScreen />}
+        {activeTab === 'metrics' && <AnalyticsScreen />}
+      </main>
 
-      {activeModal === 'checklist' && selectedDate && (
-        <DayChecklist 
-          selectedDate={selectedDate} 
-          onClose={handleCloseModal}
-          onSwitchToCanvas={handleSwitchToCanvas}
-        />
-      )}
-
-      {activeModal === 'canvas' && selectedDate && (
-        <CanvasNoteScreen 
-          selectedDate={selectedDate} 
-          onClose={handleCloseModal}
-          onSwitchToChecklist={handleSwitchToChecklist}
-        />
-      )}
-
+      {/* BARRA DE NAVEGACIÓN INFERIOR (FOOTER RETRO CON TUS IMÁGENES) */}
       <Navigation activeTab={activeTab} setActiveTab={setActiveTab} />
+      
     </div>
-  )
+  );
 }

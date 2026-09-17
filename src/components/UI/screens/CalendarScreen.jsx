@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import CalendarGrid from './CalendarGrid';
+import CalendarGrid from '../../../services/CalendarGrid';
 import SIdenoteCanvas from '../../Expenses/SIdenoteCanvas';
 import VoiceNoteModal from '../../Notes/VoiceNoteModal';
 
 // Utilidades centralizadas
-import { guardarEnStorage, obtenerDeStorage } from '../../utils/storage.js';
-import { formatearFechaCorta } from '../../utils/fechas.js';
-import { aMayusculas } from '../../utils/mayusculas.js';
-import { obtenerMensajeError } from '../../utils/errores.js';
+import { guardarEnStorage, obtenerDeStorage } from '../../../utils/storage.js';
+import { formatearFechaCorta } from '../../../utils/fechas.js';
+import { aMayusculas } from '../../../utils/mayusculas.js';
+import { obtenerMensajeError } from '../../../utils/errores.js';
 
 const NOTES_STORAGE_KEY = 'family_spen_notes';
 const TASKS_STORAGE_KEY = 'family_calendar_tasks';

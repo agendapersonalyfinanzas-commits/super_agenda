@@ -8,13 +8,20 @@ import { formatearMoneda, aNumero } from '../../../utils/moneda.js';
 import { aMayusculas } from '../../../utils/mayusculas.js';
 import { obtenerMensajeError } from '../../../utils/errores.js';
 import { guardarEnStorage, obtenerDeStorage, KEYS } from '../../../utils/storage.js';
+import { exportTransactionsToPDF } from '../../../utils/pdfExportPlugin.js'; // <--- Plugin modular de PDF importado
 
-// Módulos y componentes
+// Módulos y componentes externos
 import * as HeaderModule from '../../Expenses/DashboardHeader';
 import * as AddCustomModalModule from '../../Expenses/AddCustomButtonModal';
 import * as EditImageModalModule from '../../Expenses/EditImageModal';
 import * as OCRScannerModule from '../../Expenses/OCRScanner';
-import * as QuickExpenseButtonModule from '../QuickExpenseButton';
+
+// Componentes UI modularizados (con ruta corregida con ../)
+import QuickActionGrid from '../QuickActionGrid.jsx';
+import PlayerControlPanel from '../PlayerControlPanel.jsx';
+import GlobalBalanceCard from '../GlobalBalanceCard.jsx';
+import PlayerProgressSection from '../PlayerProgressSection.jsx';
+import RecentTransactions from '../RecentTransactions.jsx';
 
 // Rutas estáticas de imágenes / iconos desde la carpeta public
 const charlieMarket = '/charlie-market.png';
@@ -45,11 +52,6 @@ const DashboardHeader = resolveComponent(HeaderModule, 'DashboardHeader');
 const AddCustomButtonModal = resolveComponent(AddCustomModalModule, 'AddCustomButtonModal');
 const EditImageModal = resolveComponent(EditImageModalModule, 'EditImageModal');
 const OCRScanner = resolveComponent(OCRScannerModule, 'OCRScanner');
-const QuickExpenseButton = resolveComponent(QuickExpenseButtonModule, 'QuickExpenseButton');
-
-const PRESET_MAP = {
-  'lucy-analytics': lucyAnalytics,
-};
 
 const PRESET_ICONS = [
   charlieMarket,
@@ -67,7 +69,6 @@ const PRESET_ICONS = [
   woodstockTravel
 ];
 
-// NOMBRES DE MUESTRA (SE USA SI AÚN NO HAY USUARIOS REALES REGISTRADOS)
 const SAMPLE_USERS = ['SNOOPY (MUESTRA)', 'CHARLIE BROWN (MUESTRA)', 'LUCY (MUESTRA)'];
 
 const INITIAL_EXPENSES = [
@@ -86,6 +87,9 @@ export default function DashboardScreen() {
   const [isAddCustomOpen, setIsAddCustomOpen] = useState(false);
   const [modalType, setModalType] = useState('expense');
   const [activeImageTarget, setActiveImageTarget] = useState(null);
+
+  // ESTADO DE SELECCIÓN PARA INTERCAMBIO (SWAP)
+  const [selectedExpenseId, setSelectedExpenseId] = useState(null);
 
   // ESTADOS PERSISTENTES DE USUARIOS / JUGADORES
   const [customUsers, setCustomUsers] = useState(() => 
@@ -106,14 +110,19 @@ export default function DashboardScreen() {
 
   const [quickButtons, setQuickButtons] = useState([]);
   const [quickIncomes, setQuickIncomes] = useState([]);
+  const [recentTransactions, setRecentTransactions] = useState([]);
+  const [lastSavedTx, setLastSavedTx] = useState(null);
   
-  // Lista dinámica de jugadores reales / muestra
   const [activePlayers, setActivePlayers] = useState([]);
   const [isSampleData, setIsSampleData] = useState(false);
 
+  const quickButtonsRef = useRef(quickButtons);
+  useEffect(() => {
+    quickButtonsRef.current = quickButtons;
+  }, [quickButtons]);
+
   const isSeedingRef = useRef(false);
 
-  // PERSISTENCIA AUTOMÁTICA DE SESIÓN EN LOCALSTORAGE
   useEffect(() => {
     guardarEnStorage(KEYS.ACTIVE_USER, activeUser);
   }, [activeUser]);
@@ -122,11 +131,9 @@ export default function DashboardScreen() {
     guardarEnStorage(KEYS.CUSTOM_USERS, customUsers);
   }, [customUsers]);
 
-  // CARGAR Y CALCULAR JUGADORES Y TOTALES REALES DESDE SUPABASE
   const fetchActionsAndTotals = async () => {
     if (isSeedingRef.current) return;
     try {
-      // 1. Cargar Botones Rápidos
       let { data: actions, error: actionsError } = await supabase
         .from('quick_actions')
         .select('*')
@@ -148,14 +155,23 @@ export default function DashboardScreen() {
         isSeedingRef.current = false;
       }
 
-      setQuickButtons(actions.filter((a) => a.action_type === 'expense'));
-      setQuickIncomes(actions.filter((a) => a.action_type === 'income'));
+      // Limpieza de URLs con /public/ redundantes guardadas en Supabase
+      const cleanedActions = (actions || []).map(a => ({
+        ...a,
+        icon_url: a.icon_url ? a.icon_url.replace(/^\/public/, '') : a.icon_url
+      }));
 
-      // 2. Cargar Transacciones
-      const { data: trans, error: transError } = await supabase.from('transactions').select('*');
+      setQuickButtons(cleanedActions.filter((a) => a.action_type === 'expense'));
+      setQuickIncomes(cleanedActions.filter((a) => a.action_type === 'income'));
+
+      const { data: trans, error: transError } = await supabase
+        .from('transactions')
+        .select('*')
+        .order('transaction_date', { ascending: false });
       
       if (!transError && trans) {
-        // Totales globales
+        setRecentTransactions(trans);
+
         const expensesSum = trans
           .filter(t => t.transaction_type === 'expense')
           .reduce((acc, curr) => acc + aNumero(curr.amount), 0);
@@ -167,34 +183,22 @@ export default function DashboardScreen() {
         setWeeklyTotal(expensesSum);
         setTotalIncome(incomeSum);
 
-        // Extraer usuarios participantes reales desde las transacciones y lista local
         const realUsersFromTrans = trans.map(t => t.user_name ? aMayusculas(t.user_name) : null).filter(Boolean);
         const allRealUsers = Array.from(new Set([...realUsersFromTrans, ...customUsers, activeUser]));
-
-        // Determinar si hay usuarios reales participantes o mostrar muestra
         const hasRealData = trans.length > 0 || customUsers.length > 0;
         setIsSampleData(!hasRealData);
 
         const balancesMap = {};
-
         if (hasRealData) {
-          // Usar usuarios reales
           allRealUsers.forEach(u => { balancesMap[u] = 0; });
-
           trans.forEach(t => {
             const userKey = t.user_name ? aMayusculas(t.user_name) : activeUser;
-            if (!(userKey in balancesMap)) {
-              balancesMap[userKey] = 0;
-            }
+            if (!(userKey in balancesMap)) balancesMap[userKey] = 0;
             const val = aNumero(t.amount);
-            if (t.transaction_type === 'income') {
-              balancesMap[userKey] += val;
-            } else {
-              balancesMap[userKey] -= val;
-            }
+            if (t.transaction_type === 'income') balancesMap[userKey] += val;
+            else balancesMap[userKey] -= val;
           });
         } else {
-          // Datos de muestra (Valores iniciales de Peanuts)
           balancesMap[SAMPLE_USERS[0]] = 1850;
           balancesMap[SAMPLE_USERS[1]] = 500;
           balancesMap[SAMPLE_USERS[2]] = 1200;
@@ -204,10 +208,7 @@ export default function DashboardScreen() {
           username,
           balance: balancesMap[username]
         }));
-
-        // Ordenar por balance de mayor a menor
         computedPlayers.sort((a, b) => b.balance - a.balance);
-
         setActivePlayers(computedPlayers);
       }
     } catch (err) {
@@ -219,6 +220,43 @@ export default function DashboardScreen() {
   useEffect(() => {
     fetchActionsAndTotals();
   }, [customUsers, activeUser]);
+
+  // --- PERSISTENCIA DE ORDEN EN SUPABASE ---
+  const saveNewOrder = async (newList) => {
+    try {
+      const updates = newList.map((action, i) =>
+        supabase.from('quick_actions').update({ sort_order: i + 1 }).eq('id', action.id)
+      );
+      await Promise.all(updates);
+    } catch (err) {
+      console.error('Error al actualizar el orden:', err.message);
+    }
+  };
+
+  // --- LÓGICA DE INTERCAMBIO (SWAP) POR SELECCIÓN DIRECTA ---
+  const handleExpenseCardClick = (clickedId) => {
+    if (isEditMode) return;
+
+    if (!selectedExpenseId) {
+      setSelectedExpenseId(clickedId);
+    } else if (selectedExpenseId === clickedId) {
+      setSelectedExpenseId(null);
+    } else {
+      const currentList = [...quickButtonsRef.current];
+      const fromIndex = currentList.findIndex(item => item.id === selectedExpenseId);
+      const toIndex = currentList.findIndex(item => item.id === clickedId);
+
+      if (fromIndex !== -1 && toIndex !== -1) {
+        const temp = currentList[fromIndex];
+        currentList[fromIndex] = currentList[toIndex];
+        currentList[toIndex] = temp;
+
+        setQuickButtons(currentList);
+        saveNewOrder(currentList);
+      }
+      setSelectedExpenseId(null);
+    }
+  };
 
   const handleAddNewPlayer = (e) => {
     e.preventDefault();
@@ -233,11 +271,12 @@ export default function DashboardScreen() {
   };
 
   const handleSaveExpense = async (data) => {
+    if (selectedExpenseId) return;
     const amountVal = typeof data === 'object' ? aNumero(data.amount) : aNumero(data);
     const catVal = typeof data === 'object' ? aMayusculas(data.category) : 'GENERAL';
     const conceptVal = typeof data === 'object' ? aMayusculas(data.concept) : 'GASTO';
 
-    const { error } = await supabase.from('transactions').insert([
+    const { data: inserted, error } = await supabase.from('transactions').insert([
       {
         transaction_type: 'expense',
         amount: amountVal,
@@ -246,10 +285,17 @@ export default function DashboardScreen() {
         user_name: activeUser,
         transaction_date: new Date().toISOString()
       }
-    ]);
+    ]).select();
 
-    if (!error) fetchActionsAndTotals();
-    else alert('Error al registrar gasto: ' + obtenerMensajeError(error));
+    if (!error) {
+      fetchActionsAndTotals();
+      if (inserted && inserted[0]) {
+        setLastSavedTx(inserted[0]);
+        setTimeout(() => setLastSavedTx(null), 5000);
+      }
+    } else {
+      alert('Error al registrar gasto: ' + obtenerMensajeError(error));
+    }
   };
 
   const handleSaveIncome = async (data) => {
@@ -257,7 +303,7 @@ export default function DashboardScreen() {
     const catVal = typeof data === 'object' ? aMayusculas(data.category) : 'GENERAL';
     const conceptVal = typeof data === 'object' ? aMayusculas(data.concept) : 'INGRESO';
 
-    const { error } = await supabase.from('transactions').insert([
+    const { data: inserted, error } = await supabase.from('transactions').insert([
       {
         transaction_type: 'income',
         amount: amountVal,
@@ -266,10 +312,40 @@ export default function DashboardScreen() {
         user_name: activeUser,
         transaction_date: new Date().toISOString()
       }
-    ]);
+    ]).select();
 
-    if (!error) fetchActionsAndTotals();
-    else alert('Error al registrar ingreso: ' + obtenerMensajeError(error));
+    if (!error) {
+      fetchActionsAndTotals();
+      if (inserted && inserted[0]) {
+        setLastSavedTx(inserted[0]);
+        setTimeout(() => setLastSavedTx(null), 5000);
+      }
+    } else {
+      alert('Error al registrar ingreso: ' + obtenerMensajeError(error));
+    }
+  };
+
+  const handleDeleteTransaction = async (id) => {
+    const { error } = await supabase.from('transactions').delete().eq('id', id);
+    if (!error) {
+      fetchActionsAndTotals();
+      if (lastSavedTx?.id === id) setLastSavedTx(null);
+    } else {
+      alert('Error al eliminar transacción: ' + obtenerMensajeError(error));
+    }
+  };
+
+  const handleUpdateTransactionAmount = async (id, newAmount) => {
+    const { error } = await supabase
+      .from('transactions')
+      .update({ amount: aNumero(newAmount) })
+      .eq('id', id);
+
+    if (!error) {
+      fetchActionsAndTotals();
+    } else {
+      alert('Error al actualizar monto: ' + obtenerMensajeError(error));
+    }
   };
 
   const handleDeleteButton = async (id) => {
@@ -331,200 +407,113 @@ export default function DashboardScreen() {
     setActiveImageTarget(null);
   };
 
-  const maxBalance = Math.max(...activePlayers.map((b) => Math.abs(b.balance)), 1);
   const availableUsersList = Array.from(new Set([activeUser, ...customUsers, ...activePlayers.map(p => p.username)]));
 
   return (
-    <div className="min-h-screen bg-[#Fef8e7] p-4 md:p-8 font-mono text-black pb-24 select-none">
+    <div className="min-h-screen bg-[#Fef8e7] p-4 md:p-8 font-mono text-black pb-24 select-none relative">
       <div className="max-w-4xl mx-auto space-y-8">
         
         {/* CABECERA */}
         <DashboardHeader onOcrOpen={() => setIsOcrOpen(true)} />
         
-        {/* PANEL DE CONTROL DE JUGADOR - RESPONSIVE PARA MÓVILES */}
-        <div className="border-4 border-black bg-white p-4 rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] space-y-4 w-full overflow-hidden">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2 sm:gap-4">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-black uppercase text-stone-600 shrink-0">👤 Jugador:</span>
-                <select 
-                  value={activeUser} 
-                  onChange={(e) => setActiveUser(e.target.value)} 
-                  className="px-2.5 py-1.5 border-2 border-black rounded-xl text-xs font-black bg-amber-400 focus:outline-none shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer truncate max-w-32.5 sm:max-w-none"
-                >
-                  {availableUsersList.map((u) => (
-                    <option key={u} value={u}>{u}</option>
-                  ))}
-                </select>
-              </div>
-
-              <button 
-                type="button"
-                onClick={() => setIsEditMode(!isEditMode)}
-                className={`px-3 py-1.5 border-3 sm:border-4 border-black rounded-xl font-black text-xs uppercase tracking-wide shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all cursor-pointer ${
-                  isEditMode ? 'bg-rose-400 text-black shadow-none translate-x-0.5 translate-y-0.5' : 'bg-amber-400 text-black hover:bg-amber-300'
-                }`}
-              >
-                {isEditMode ? '⚙️ LISTO' : '🛠️ EDITAR BOTONES'}
-              </button>
-            </div>
-            
-            <button 
-              type="button" 
-              onClick={() => setShowAddPlayerRow(!showAddPlayerRow)} 
-              className="px-3 py-1.5 bg-stone-100 border-2 border-black rounded-xl text-xs font-black uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-stone-200 cursor-pointer w-full sm:w-auto text-center"
-            >
-              {showAddPlayerRow ? 'Cancelar' : '➕ Registrar Jugador'}
-            </button>
-          </div>
-
-          {showAddPlayerRow && (
-            <form onSubmit={handleAddNewPlayer} className="flex flex-col sm:flex-row gap-2 pt-2 border-t-2 border-dashed border-stone-200 items-stretch sm:items-center">
-              <input 
-                type="text" 
-                value={newPlayerName} 
-                onChange={(e) => setNewPlayerName(e.target.value)} 
-                placeholder="ESCRIBE TU NOMBRE DE JUGADOR..." 
-                maxLength={15} 
-                className="flex-1 px-3 py-2 border-2 border-black rounded-xl text-xs font-bold focus:outline-none uppercase" 
-              />
-              <button type="submit" className="px-4 py-2 bg-emerald-400 border-2 border-black rounded-xl font-black text-xs uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer">
-                Guardar
-              </button>
-            </form>
-          )}
-        </div>
+        {/* PANEL DE CONTROL DE JUGADOR */}
+        <PlayerControlPanel 
+          activeUser={activeUser}
+          setActiveUser={setActiveUser}
+          availableUsersList={availableUsersList}
+          isEditMode={isEditMode}
+          setIsEditMode={setIsEditMode}
+          setSelectedExpenseId={setSelectedExpenseId}
+          showAddPlayerRow={showAddPlayerRow}
+          setShowAddPlayerRow={setShowAddPlayerRow}
+          newPlayerName={newPlayerName}
+          setNewPlayerName={setNewPlayerName}
+          onAddPlayer={handleAddNewPlayer}
+        />
 
         <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Balance Neto Global */}
-          <div className="relative border-4 border-black rounded-3xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] overflow-hidden p-6 min-h-48 flex flex-col justify-between bg-white">
-            <img src={PRESET_MAP['lucy-analytics']} alt="Lucy" className="absolute inset-0 w-full h-full object-cover opacity-15 pointer-events-none" />
-            <div className="relative z-10 space-y-1">
-              <h2 className="text-xs font-black uppercase text-stone-600">Balance Neto Global</h2>
-              <div className="text-[9px] font-bold text-stone-500 uppercase tracking-tight">
-                Ingresos: {formatearMoneda(totalIncome)} | Gastos: {formatearMoneda(weeklyTotal)}
-              </div>
-            </div>
-            <div className={`relative z-10 mt-auto border-4 border-black px-4 py-2 rounded-xl w-fit shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] font-black text-2xl ${
-              totalIncome - weeklyTotal >= 0 ? 'bg-emerald-400' : 'bg-red-400'
-            }`}>
-              {formatearMoneda(totalIncome - weeklyTotal)}
-            </div>
-          </div>
+          
+          {/* BALANCE NETO GLOBAL CON SOPORTE PDF */}
+          <GlobalBalanceCard 
+            totalIncome={totalIncome}
+            weeklyTotal={weeklyTotal}
+            bgImage={lucyAnalytics}
+            transactions={recentTransactions}
+          />
 
           <div className="md:col-span-2 space-y-6">
             
-            {/* BOTONERA GASTOS */}
-            <div className="border-4 border-black bg-rose-500/15 p-6 rounded-3xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-4">
-              <div>
-                <h2 className="text-sm font-black uppercase text-rose-950">💸 Registrar Egresos</h2>
-                <p className="text-[10px] font-bold text-rose-800 uppercase tracking-tight">Guarda tus gastos como {activeUser}</p>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-6 justify-items-center touch-none">
-                {quickButtons.map((btn) => (
-                  <div key={btn.id} className="relative">
-                    <div onClick={isEditMode ? () => setActiveImageTarget(btn.id) : undefined} className={isEditMode ? 'cursor-pointer relative z-10' : ''}>
-                      <QuickExpenseButton 
-                        icon={btn.icon_url} 
-                        label={btn.label} 
-                        defaultAmount={btn.default_amount} 
-                        category={btn.category} 
-                        onSave={isEditMode ? () => setActiveImageTarget(btn.id) : handleSaveExpense} 
-                      />
-                    </div>
-                    {isEditMode && (
-                      <div className="absolute -top-2 -right-2 flex gap-1 z-30 pointer-events-auto">
-                        <button type="button" onClick={(e) => { e.stopPropagation(); setActiveImageTarget(btn.id); }} className="bg-amber-400 border-2 border-black font-black text-[11px] rounded-full w-6 h-6 flex items-center justify-center cursor-pointer">📷</button>
-                        <button type="button" onClick={(e) => { e.stopPropagation(); handleDeleteButton(btn.id); }} className="bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-[11px] font-black border-2 border-black">✕</button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-                <div className="flex flex-col items-center gap-2">
-                  <button type="button" onClick={() => { setModalType('expense'); setIsAddCustomOpen(true); }} className="w-28 h-28 flex items-center justify-center bg-white border-4 border-black rounded-full text-black text-3xl font-black shadow-[5px_5px_0px_0px_rgba(0,0,0,1)] hover:scale-105 active:translate-x-1 active:translate-y-1 active:shadow-none transition-all cursor-pointer">+</button>
-                  <span className="text-[11px] font-black uppercase bg-white border-2 border-black px-2 py-0.5 rounded-lg text-rose-900 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">Añadir</span>
-                </div>
-              </div>
-            </div>
+            {/* BOTONERA GASTOS CON SOPORTE PDF FILTRADO */}
+            <QuickActionGrid 
+              title="💸 Registrar Egresos"
+              subtitle="Toca un botón para mover • O toca para registrar"
+              actions={quickButtons}
+              selectedId={selectedExpenseId}
+              onSelect={handleExpenseCardClick}
+              onSave={handleSaveExpense}
+              isEditMode={isEditMode}
+              onEditImage={setActiveImageTarget}
+              onDelete={handleDeleteButton}
+              onAddCustom={() => { setModalType('expense'); setIsAddCustomOpen(true); }}
+              onCancelSelection={() => setSelectedExpenseId(null)}
+              onExportPDF={() => exportTransactionsToPDF(recentTransactions.filter(t => t.transaction_type === 'expense'))}
+              bgColor="bg-rose-500/15"
+              titleColor="text-rose-950"
+              subtitleColor="text-rose-800"
+              isExpense={true}
+            />
 
-            {/* BOTONERA INGRESOS */}
-            <div className="border-4 border-black bg-emerald-500/15 p-6 rounded-3xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-4">
-              <div>
-                <h2 className="text-sm font-black uppercase text-emerald-950">💰 Registrar Ingresos</h2>
-                <p className="text-[10px] font-bold text-emerald-800 uppercase tracking-tight">Guarda tus entradas de dinero como {activeUser}</p>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-6 justify-items-center touch-none">
-                {quickIncomes.map((inc) => (
-                  <div key={inc.id} className="relative">
-                    <div onClick={isEditMode ? () => setActiveImageTarget(inc.id) : undefined} className={isEditMode ? 'cursor-pointer relative z-10' : ''}>
-                      <QuickExpenseButton 
-                        icon={inc.icon_url} 
-                        label={inc.label} 
-                        defaultAmount={inc.default_amount} 
-                        category={inc.category} 
-                        onSave={isEditMode ? () => setActiveImageTarget(inc.id) : handleSaveIncome} 
-                      />
-                    </div>
-                    {isEditMode && (
-                      <div className="absolute -top-2 -right-2 flex gap-1 z-30 pointer-events-auto">
-                        <button type="button" onClick={(e) => { e.stopPropagation(); setActiveImageTarget(inc.id); }} className="bg-amber-400 border-2 border-black font-black text-[11px] rounded-full w-6 h-6 flex items-center justify-center cursor-pointer">📷</button>
-                        <button type="button" onClick={(e) => { e.stopPropagation(); handleDeleteButton(inc.id); }} className="bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-[11px] font-black border-2 border-black">✕</button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-                <div className="flex flex-col items-center gap-2">
-                  <button type="button" onClick={() => { setModalType('income'); setIsAddCustomOpen(true); }} className="w-28 h-28 flex items-center justify-center bg-white border-4 border-black rounded-full text-black text-3xl font-black shadow-[5px_5px_0px_0px_rgba(0,0,0,1)] hover:scale-105 transition-all cursor-pointer">+</button>
-                  <span className="text-[11px] font-black uppercase bg-white border-2 border-black px-2 py-0.5 rounded-lg text-emerald-900 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">Añadir</span>
-                </div>
-              </div>
-            </div>
+            {/* BOTONERA INGRESOS CON SOPORTE PDF FILTRADO */}
+            <QuickActionGrid 
+              title="💰 Registrar Ingresos"
+              subtitle={`Guarda tus entradas de dinero como ${activeUser}`}
+              actions={quickIncomes}
+              onSave={handleSaveIncome}
+              isEditMode={isEditMode}
+              onEditImage={setActiveImageTarget}
+              onDelete={handleDeleteButton}
+              onAddCustom={() => { setModalType('income'); setIsAddCustomOpen(true); }}
+              onExportPDF={() => exportTransactionsToPDF(recentTransactions.filter(t => t.transaction_type === 'income'))}
+              bgColor="bg-emerald-500/15"
+              titleColor="text-emerald-950"
+              subtitleColor="text-emerald-800"
+              isExpense={false}
+            />
+
+            {/* HISTORIAL RÁPIDO DIRECTO A SUPABASE (ÚLTIMOS MOVIMIENTOS) */}
+            <RecentTransactions 
+              transactions={recentTransactions}
+              onDelete={handleDeleteTransaction}
+              onUpdate={handleUpdateTransactionAmount}
+            />
 
           </div>
         </section>
 
-        {/* TABLERO GAMIFICADO - DINÁMICO SEGÚN USUARIOS REALES O MUESTRA */}
-        <section className="border-4 border-black bg-amber-400 p-6 rounded-3xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-4">
-          <div className="flex justify-between items-center">
-            <h2 className="text-base font-black uppercase">🏆 Avance de Disciplina Financiera</h2>
-            {isSampleData && (
-              <span className="text-[10px] font-black bg-white border-2 border-black px-2 py-0.5 rounded-full uppercase">
-                Modo Muestra
-              </span>
-            )}
-          </div>
-          <div className="space-y-3 bg-white border-4 border-black p-4 rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-            {activePlayers.length === 0 ? (
-              <p className="text-xs font-bold text-center text-stone-500 uppercase">Cargando avance de los jugadores...</p>
-            ) : (
-              activePlayers.map((user, idx) => (
-                <div key={user.username} className="space-y-1">
-                  <div className="flex justify-between items-center text-xs font-black uppercase">
-                    <span>
-                      {idx === 0 ? '👑' : '⭐'} {idx + 1}. {user.username} {user.username === activeUser && '(TÚ)'}
-                    </span>
-                    <span className={user.balance >= 0 ? 'text-emerald-600' : 'text-red-600'}>
-                      {formatearMoneda(user.balance)} {user.balance >= 0 ? 'DISPONIBLE' : 'DEUDA'}
-                    </span>
-                  </div>
-                  <div className="w-full bg-stone-100 border-2 border-black rounded-lg h-4 overflow-hidden shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] relative">
-                    <div 
-                      style={{ 
-                        width: `${Math.max(5, Math.min(100, Math.abs(user.balance) > 0 ? (Math.abs(user.balance) / maxBalance) * 100 : 5))}%` 
-                      }} 
-                      className={`h-full border-r-2 border-black transition-all duration-500 ${
-                        user.balance >= 0 
-                          ? user.username === activeUser ? 'bg-amber-400' : 'bg-sky-400'
-                          : 'bg-rose-400'
-                      }`} 
-                    />
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </section>
+        {/* TABLERO GAMIFICADO */}
+        <PlayerProgressSection 
+          activePlayers={activePlayers}
+          activeUser={activeUser}
+          isSampleData={isSampleData}
+        />
       </div>
+
+      {/* TOAST FLOTANTE DE DESHACER (INMEDIATO 5 SEGUNDOS) */}
+      {lastSavedTx && (
+        <div className="fixed bottom-6 right-6 z-50 bg-black text-white border-4 border-amber-400 p-4 rounded-3xl shadow-[8px_8px_0px_0px_rgba(251,191,36,1)] flex items-center gap-4 animate-in slide-in-from-bottom-5 font-mono">
+          <div>
+            <p className="text-xs font-black uppercase text-amber-300">✨ Movimiento Registrado</p>
+            <p className="text-[11px] text-stone-300">{lastSavedTx.concept}: {formatearMoneda(lastSavedTx.amount)}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleDeleteTransaction(lastSavedTx.id)}
+            className="bg-amber-400 text-black border-2 border-black px-3 py-2 rounded-2xl font-black text-xs uppercase cursor-pointer hover:bg-amber-300 shadow active:translate-x-0.5 active:translate-y-0.5"
+          >
+            Deshacer / Borrar
+          </button>
+        </div>
+      )}
 
       {/* MODALES */}
       {isAddCustomOpen && (

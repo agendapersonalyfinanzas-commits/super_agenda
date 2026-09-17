@@ -1,144 +1,84 @@
-import React, { useState, useEffect } from 'react'
-import QuickExpenseButton from './QuickExpenseButton'
-import { supabase } from '../../supabaseClient'
+import React, { useState } from 'react';
+import QuickActionGrid from './QuickActionGrid';
+import RecentTransactions from './RecentTransactions';
+import { formatearMoneda } from '../../utils/moneda.js';
 
-export default function QuickActionSection({ playerId }) {
-  const [quickActions, setQuickActions] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [draggedIndex, setDraggedIndex] = useState(null)
+export default function QuickActionSection({
+  expenseActions = [],
+  incomeActions = [],
+  recentTransactions = [],
+  onSaveTransaction,
+  onUpdateTransaction,
+  onDeleteTransaction,
+  isEditMode,
+  onEditImage,
+  onDeleteButton,
+  onAddCustomButton
+}) {
+  const [lastSavedTx, setLastSavedTx] = useState(null);
 
-  // 1. Cargar botones desde la base de datos
-  const fetchQuickActions = async () => {
+  // Manejar el guardado con soporte para el Toast de "Deshacer"
+  const handleSave = async (txData) => {
     try {
-      setLoading(true)
-      let query = supabase.from('quick_actions').select('*').order('sort_order', { ascending: true })
-      
-      // Si hay un jugador seleccionado, filtramos por él
-      if (playerId) {
-        query = query.eq('player_id', playerId)
-      }
-
-      const { data, error } = await query
-      if (error) throw error
-
-      setQuickActions(data || [])
-    } catch (err) {
-      console.error('Error al cargar botones rápidos:', err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchQuickActions()
-  }, [playerId])
-
-  // 2. Lógica para reordenar (Drag & Drop) y guardar en Supabase
-  const handleDragStart = (e, index) => {
-    setDraggedIndex(index)
-    e.dataTransfer.effectAllowed = 'move'
-  }
-
-  const handleDragOver = (e) => {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'move'
-  }
-
-  const handleDrop = async (e, dropIndex) => {
-    e.preventDefault()
-    if (draggedIndex === null || draggedIndex === dropIndex) return
-
-    // Reordenar en estado local
-    const updatedActions = [...quickActions]
-    const [movedItem] = updatedActions.splice(draggedIndex, 1)
-    updatedActions.splice(dropIndex, 0, movedItem)
-
-    setQuickActions(updatedActions)
-    setDraggedIndex(null)
-
-    // Guardar el nuevo sort_order en Supabase
-    try {
-      for (let i = 0; i < updatedActions.length; i++) {
-        await supabase
-          .from('quick_actions')
-          .update({ sort_order: i + 1 })
-          .eq('id', updatedActions[i].id)
+      const saved = await onSaveTransaction(txData);
+      if (saved) {
+        setLastSavedTx(saved);
+        setTimeout(() => {
+          setLastSavedTx(null);
+        }, 5000); // 5 segundos para deshacer al instante
       }
     } catch (err) {
-      console.error('Error al actualizar el orden en Supabase:', err.message)
+      console.error("Error al registrar en QuickActionSection:", err);
     }
-  }
+  };
 
-  // 3. Registrar la transacción en la base de datos al presionar un botón
-  const handleSaveTransaction = async (actionData) => {
-    try {
-      const { error } = await supabase
-        .from('transactions')
-        .insert([
-          {
-            player_id: playerId || null,
-            transaction_type: actionData.type || 'expense',
-            amount: actionData.amount,
-            category: actionData.category,
-            concept: actionData.concept,
-            transaction_date: new Date().toISOString()
-          }
-        ])
-
-      if (error) throw error
-      alert(`¡Gasto de $${actionData.amount} registrado con éxito en la Base de Datos!`)
-    } catch (err) {
-      console.error('Error al guardar transacción:', err.message)
-      alert('Ocurrió un error al guardar en la base de datos.')
-    }
-  }
-
-  if (loading) {
-    return <div className="text-center font-black p-4">Cargando botones desde Supabase...</div>
-  }
+  const handleUndo = async () => {
+    if (!lastSavedTx || !onDeleteTransaction) return;
+    await onDeleteTransaction(lastSavedTx.id);
+    setLastSavedTx(null);
+  };
 
   return (
-    <div className="p-4 bg-red-100 border-4 border-black rounded-3xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-      <div className="flex justify-between items-center mb-4">
-        <div>
-          <h2 className="font-black text-lg uppercase text-black">Registrar Egresos</h2>
-          <p className="text-[10px] font-bold text-stone-600 uppercase">
-            Sincronizado con Supabase
-          </p>
-        </div>
-      </div>
+    <div className="space-y-6 relative">
+      {/* Cuadrícula de Egresos / Gastos Rápidos */}
+      <QuickActionGrid
+        title="Registrar Egresos"
+        subtitle="Toca un botón para registrar o ajustar monto"
+        actions={expenseActions}
+        onSave={handleSave}
+        isEditMode={isEditMode}
+        onEditImage={onEditImage}
+        onDelete={onDeleteButton}
+        onAddCustom={onAddCustomButton}
+        bgColor="bg-rose-500/15"
+        titleColor="text-rose-950"
+        subtitleColor="text-rose-800"
+        isExpense={true}
+      />
 
-      {quickActions.length === 0 ? (
-        <div className="text-center py-6 font-bold text-stone-500">
-          No hay botones registrados en la Base de Datos.
-        </div>
-      ) : (
-        <div className="grid grid-cols-3 gap-4 justify-items-center">
-          {quickActions.map((action, index) => (
-            <div
-              key={action.id}
-              draggable
-              onDragStart={(e) => handleDragStart(e, index)}
-              onDragOver={handleDragOver}
-              onDrop={(e) => handleDrop(e, index)}
-              className={`relative cursor-grab active:cursor-grabbing transition-all select-none ${
-                draggedIndex === index ? 'opacity-30 scale-95' : 'opacity-100'
-              }`}
-            >
-              <span className="absolute -top-1 -right-1 text-[10px] text-stone-500 font-black pointer-events-none z-10">
-                ⋮⋮
-              </span>
-              <QuickExpenseButton
-                icon={action.icon_url}
-                label={action.label}
-                defaultAmount={action.default_amount}
-                category={action.category}
-                onSave={(data) => handleSaveTransaction({ ...data, type: action.action_type })}
-              />
-            </div>
-          ))}
+      {/* Historial Rápido para corregir o borrar directamente en Supabase */}
+      <RecentTransactions 
+        transactions={recentTransactions}
+        onDelete={onDeleteTransaction}
+        onUpdate={onUpdateTransaction}
+      />
+
+      {/* Toast Flotante de Deshacer (Inmediato) */}
+      {lastSavedTx && (
+        <div className="fixed bottom-6 right-6 z-50 bg-black text-white border-4 border-amber-400 p-4 rounded-3xl shadow-[8px_8px_0px_0px_rgba(251,191,36,1)] flex items-center gap-4 animate-in slide-in-from-bottom-5 font-mono">
+          <div>
+            <p className="text-xs font-black uppercase text-amber-300">✨ Gasto Registrado</p>
+            <p className="text-[11px] text-stone-300">{lastSavedTx.concept}: {formatearMoneda(lastSavedTx.amount)}</p>
+          </div>
+          <button
+            type="button"
+            onClick={handleUndo}
+            className="bg-amber-400 text-black border-2 border-black px-3 py-2 rounded-2xl font-black text-xs uppercase cursor-pointer hover:bg-amber-300 shadow active:translate-x-0.5 active:translate-y-0.5"
+          >
+            Deshacer / Borrar
+          </button>
         </div>
       )}
     </div>
-  )
+  );
 }

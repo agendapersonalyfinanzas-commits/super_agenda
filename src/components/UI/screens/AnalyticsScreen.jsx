@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../supabaseClient';
-import { LucyAnalyticsIcon } from '../Icons';
 
 // Importación de utilidades con extensión .js para Vite
 import { formatearMoneda, aNumero } from '../../../utils/moneda.js';
@@ -25,13 +24,13 @@ export default function AnalyticsScreen() {
     
     try {
       const today = new Date();
-      const currentWeekStart = new Date(today.setDate(today.getDate() - today.getDay()));
+      const currentWeekStart = new Date(today);
+      currentWeekStart.setDate(today.getDate() - today.getDay());
       currentWeekStart.setHours(0, 0, 0, 0);
       
       const previousWeekStart = new Date(currentWeekStart);
       previousWeekStart.setDate(previousWeekStart.getDate() - 7);
 
-      // Consulta a la tabla unificada 'transactions'
       const { data, error } = await supabase
         .from('transactions')
         .select('amount, category, transaction_date, transaction_type')
@@ -40,7 +39,6 @@ export default function AnalyticsScreen() {
       if (error) throw error;
 
       if (data) {
-        // Filtrar únicamente los egresos/gastos para las métricas de gasto
         const expensesData = data.filter(item => item.transaction_type === 'expense');
         processCharts(expensesData, currentWeekStart);
       }
@@ -73,12 +71,12 @@ export default function AnalyticsScreen() {
         weeklyMap[dayName].actual += amount;
         categoriesMap[categoryName] = (categoriesMap[categoryName] || 0) + amount;
 
-        if (categoryName === 'DIVERSIÓN' || categoryName === 'ENTRETENIMIENTO' || categoryName === 'OCIO') {
+        if (['DIVERSIÓN', 'ENTRETENIMIENTO', 'OCIO'].includes(categoryName)) {
           totalActualFun += amount;
         }
       } else {
         weeklyMap[dayName].pasada += amount;
-        if (categoryName === 'DIVERSIÓN' || categoryName === 'ENTRETENIMIENTO' || categoryName === 'OCIO') {
+        if (['DIVERSIÓN', 'ENTRETENIMIENTO', 'OCIO'].includes(categoryName)) {
           totalPasadaFun += amount;
         }
       }
@@ -101,7 +99,10 @@ export default function AnalyticsScreen() {
     }
   };
 
-  const maxWeeklyValue = Math.max(...weeklyData.map(d => Math.max(d.actual, d.pasada)), 1);
+  const maxWeeklyValue = weeklyData.length > 0 
+    ? Math.max(...weeklyData.map(d => Math.max(d.actual, d.pasada)), 1) 
+    : 1;
+    
   const totalExpensesSum = categoryData.reduce((acc, curr) => acc + curr.value, 0);
 
   return (
@@ -110,8 +111,8 @@ export default function AnalyticsScreen() {
         
         {/* CABECERA ESTILO CÓMIC */}
         <header className="flex items-center gap-4 border-4 border-black bg-white p-6 rounded-3xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-          <div className="w-14 h-14 bg-amber-400 border-2 border-black rounded-full flex items-center justify-center shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] shrink-0">
-            <LucyAnalyticsIcon />
+          <div className="w-14 h-14 bg-amber-400 border-2 border-black rounded-full flex items-center justify-center shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-2xl shrink-0">
+            📊
           </div>
           <div>
             <h1 className="text-xl font-black uppercase tracking-tight text-black">Analíticas de Gastos</h1>
@@ -126,10 +127,10 @@ export default function AnalyticsScreen() {
           </div>
         )}
 
-        {/* RECOMENDACIÓN LUCY CONTABLE */}
+        {/* RECOMENDACIÓN LUCY */}
         {savingMessage && !errorMessage && (
           <div className="border-4 border-black bg-amber-300 p-4 rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex items-center gap-3">
-            <span className="text-xl">📊</span>
+            <span className="text-xl">💡</span>
             <p className="text-xs font-black text-black uppercase tracking-tight leading-relaxed">{savingMessage}</p>
           </div>
         )}
@@ -167,7 +168,6 @@ export default function AnalyticsScreen() {
           </div>
         ) : (
           <>
-            {/* GRÁFICA COMPARATIVA SEMANAL */}
             {activeTab === 'weekly' && (
               <div className="border-4 border-black bg-white p-6 rounded-3xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-4">
                 <h3 className="font-black text-xs uppercase tracking-wider text-stone-600">Ciclo Actual vs Ciclo Anterior</h3>
@@ -176,23 +176,19 @@ export default function AnalyticsScreen() {
                   {weeklyData.map(day => {
                     const actualHeight = (day.actual / maxWeeklyValue) * 100;
                     const pasadaHeight = (day.pasada / maxWeeklyValue) * 100;
-                    const labelPasada = `ANTERIOR: ${formatearMoneda(day.pasada)}`;
-                    const labelActual = `ACTUAL: ${formatearMoneda(day.actual)}`;
 
                     return (
                       <div key={day.name} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
                         <div className="w-full flex justify-center items-end gap-1 h-full max-h-[85%]">
-                          {/* Barra Semana Anterior */}
                           <div 
                             style={{ height: `${Math.max(4, pasadaHeight)}%` }} 
-                            className="w-1/2 bg-sky-300 border-2 border-black rounded-t-lg transition-all"
-                            title={labelPasada}
+                            className="w-1/2 bg-sky-300 border-2 border-black rounded-t-lg"
+                            title={`Anterior: ${formatearMoneda(day.pasada)}`}
                           />
-                          {/* Barra Semana Actual */}
                           <div 
                             style={{ height: `${Math.max(4, actualHeight)}%` }} 
-                            className="w-1/2 bg-amber-400 border-2 border-black rounded-t-lg transition-all"
-                            title={labelActual}
+                            className="w-1/2 bg-amber-400 border-2 border-black rounded-t-lg"
+                            title={`Actual: ${formatearMoneda(day.actual)}`}
                           />
                         </div>
                         <span className="font-black text-[11px] text-black pt-2 mt-1 uppercase">{day.name}</span>
@@ -214,7 +210,6 @@ export default function AnalyticsScreen() {
               </div>
             )}
 
-            {/* DISTRIBUCIÓN POR CATEGORÍAS */}
             {activeTab === 'categories' && (
               <div className="border-4 border-black bg-white p-6 rounded-3xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-6">
                 <div className="flex justify-between items-center border-b-2 border-dashed border-stone-200 pb-3">

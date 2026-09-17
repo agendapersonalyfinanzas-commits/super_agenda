@@ -1,139 +1,87 @@
-import React, { useState, useEffect } from 'react'
-import { supabase } from '../supabaseClient'
+import React, { useState } from 'react';
+import { aMayusculas } from '../utils/mayusculas.js';
 
 export default function CalendarGrid({ onSelectDay }) {
-  const [currentDate, setCurrentDate] = useState(new Date())
-  const [events, setEvents] = useState({})
-  const [loading, setLoading] = useState(false)
+  const [currentDate, setCurrentDate] = useState(new Date());
 
-  const year = currentDate.getFullYear()
-  const month = currentDate.getMonth()
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
 
-  const monthsEs = [
+  const firstDayIndex = new Date(year, month, 1).getDay();
+  const totalDays = new Date(year, month + 1, 0).getDate();
+
+  const meses = [
     'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
-  ]
+  ];
 
-  useEffect(() => {
-    fetchMonthIndicators()
-  }, [currentDate])
+  const diasSemana = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
-  const fetchMonthIndicators = async () => {
-    setLoading(true)
-    const firstDay = new Date(year, month, 1).toISOString().split('T')[0]
-    const lastDay = new Date(year, month + 1, 0).toISOString().split('T')[0]
+  const handlePrevMonth = () => {
+    setCurrentDate(new Date(year, month - 1, 1));
+  };
 
-    const { data, error } = await supabase
-      .from('agenda_events')
-      .select('event_date, has_pending_tasks')
-      .gte('event_date', firstDay)
-      .lte('event_date', lastDay)
-
-    if (!error && data) {
-      const indicators = data.reduce((acc, curr) => {
-        const dateStr = curr.event_date
-        if (!acc[dateStr]) {
-          acc[dateStr] = { hasEvent: true, hasPending: curr.has_pending_tasks }
-        } else if (curr.has_pending_tasks) {
-          acc[dateStr].hasPending = true
-        }
-        return acc
-      }, {})
-      setEvents(indicators)
-    }
-    setLoading(false)
-  }
-
-  const daysInMonth = new Date(year, month + 1, 0).getDate()
-  const firstDayIndex = new Date(year, month, 1).getDay()
-
-  const blanks = Array(firstDayIndex).fill(null)
-  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1)
-  const calendarCells = [...blanks, ...days]
-
-  const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1))
-  const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1))
+  const handleNextMonth = () => {
+    setCurrentDate(new Date(year, month + 1, 1));
+  };
 
   return (
-    <div className="w-full max-w-xl bg-white border-4 border-black rounded-3xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] overflow-hidden font-mono tracking-tight text-black">
-      <div className="p-4 border-b-4 border-black flex justify-between items-center bg-amber-100">
-        <h2 className="font-black text-lg uppercase tracking-wide">
-          {monthsEs[month]} {year}
+    <div className="w-full bg-white border-4 border-black p-4 sm:p-6 rounded-3xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] font-mono">
+      
+      {/* CONTROLES DE MES (Diseño adaptado para móvil sin desbordarse) */}
+      <div className="flex flex-col items-center gap-3 mb-6 border-b-4 border-black pb-4">
+        <h2 className="text-xl font-black uppercase tracking-tight text-center">
+          {aMayusculas(`${meses[month]} ${year}`)}
         </h2>
-        <div className="flex gap-2">
-          <button onClick={prevMonth} className="px-3 py-1 bg-white border-2 border-black rounded-lg font-black text-xs uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all">
-            Anterior
+        <div className="flex justify-between w-full gap-2">
+          <button
+            type="button"
+            onClick={handlePrevMonth}
+            className="flex-1 px-3 py-2 bg-amber-400 border-4 border-black rounded-xl font-black text-xs uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none cursor-pointer truncate"
+          >
+            ◀ {aMayusculas('Anterior')}
           </button>
-          <button onClick={nextMonth} className="px-3 py-1 bg-white border-2 border-black rounded-lg font-black text-xs uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all">
-            Siguiente
+          <button
+            type="button"
+            onClick={handleNextMonth}
+            className="flex-1 px-3 py-2 bg-amber-400 border-4 border-black rounded-xl font-black text-xs uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none cursor-pointer truncate"
+          >
+            {aMayusculas('Siguiente')} ▶
           </button>
         </div>
       </div>
 
-      <div className="p-4">
-        <div className="grid grid-cols-7 gap-1 text-center font-black text-xs uppercase tracking-wide text-stone-500 mb-4">
-          {['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'].map((d, i) => <div key={i}>{d}</div>)}
-        </div>
-
-        {loading ? (
-          <div className="h-64 flex items-center justify-center font-black text-xs uppercase tracking-widest animate-pulse text-stone-400">
-            Buscando Notas...
+      {/* Días de la semana */}
+      <div className="grid grid-cols-7 gap-1.5 mb-2 text-center">
+        {diasSemana.map((d) => (
+          <div key={d} className="font-black text-[11px] sm:text-xs uppercase text-stone-600">
+            {d}
           </div>
-        ) : (
-          <div className="grid grid-cols-7 gap-y-3 gap-x-1 justify-items-center">
-            {calendarCells.map((day, idx) => {
-              if (day === null) {
-                return <div key={`blank-${idx}`} className="w-10 h-10 bg-stone-50 border border-dashed border-stone-200 rounded-lg" />
-              }
+        ))}
+      </div>
 
-              let dayStr = String(day)
-              if (day < 10) dayStr = '0' + dayStr
+      {/* Cuadrícula de días */}
+      <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
+        {Array.from({ length: firstDayIndex }).map((_, index) => (
+          <div key={`empty-${index}`} className="h-12 sm:h-14 bg-stone-100 border-2 border-dashed border-stone-300 rounded-xl opacity-40" />
+        ))}
 
-              let monthNumber = month + 1
-              let monthStr = String(monthNumber)
-              if (monthNumber < 10) monthStr = '0' + monthStr
-
-              const dateKey = year + '-' + monthStr + '-' + dayStr
-              const dayMeta = events[dateKey]
-
-              const today = new Date()
-              const isToday = today.getDate() === day && today.getMonth() === month && today.getFullYear() === year
-
-              let btnStyle = 'w-10 h-10 rounded-xl relative flex flex-col items-center justify-center font-black text-sm transition-all border-2 '
-              if (isToday) {
-                btnStyle = btnStyle + 'bg-amber-400 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
-              } else {
-                btnStyle = btnStyle + 'bg-white border-stone-300 hover:border-black hover:bg-stone-50'
-              }
-
-              return (
-                <button key={`day-${day}`} onClick={() => onSelectDay(dateKey)} className={btnStyle}>
-                  <span>{day}</span>
-                  <div className="absolute bottom-1 flex gap-0.5 justify-center w-full">
-                    {dayMeta && dayMeta.hasEvent && !isToday && (
-                      <span className="w-1.5 h-1.5 bg-black border border-black rounded-full" />
-                    )}
-                    {dayMeta && dayMeta.hasPending && (
-                      <span className="w-1.5 h-1.5 bg-sky-400 border border-black rounded-full" />
-                    )}
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        )}
-
-        <div className="mt-6 pt-4 border-t-2 border-black flex justify-center gap-6 text-[10px] font-black uppercase tracking-wider text-stone-600">
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 bg-black border border-black rounded-full" />
-            <span>Eventos</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 bg-sky-400 border border-black rounded-full" />
-            <span>Pendientes</span>
-          </div>
-        </div>
+        {Array.from({ length: totalDays }).map((_, index) => {
+          const dayNum = index + 1;
+          const formattedDate = `${dayNum.toString().padStart(2, '0')}/${(month + 1).toString().padStart(2, '0')}/${year}`;
+          
+          return (
+            <button
+              key={dayNum}
+              type="button"
+              onClick={() => onSelectDay && onSelectDay(formattedDate)}
+              className="h-12 sm:h-14 bg-amber-50 border-2 border-black rounded-xl font-black text-xs sm:text-sm flex flex-col items-center justify-center hover:bg-amber-300 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all cursor-pointer"
+            >
+              <span>{dayNum}</span>
+            </button>
+          );
+        })}
       </div>
     </div>
-  )
+  );
 }

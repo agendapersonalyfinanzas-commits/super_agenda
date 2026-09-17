@@ -1,215 +1,282 @@
-import React, { useState, useEffect, useRef } from 'react'
-import { supabase } from '../../../supabaseClient'
+import React, { useState, useRef, useEffect } from 'react';
+import { aMayusculas } from '../../../utils/mayusculas.js';
+import { obtenerDeStorage, guardarEnStorage } from '../../../utils/storage.js';
 
-export default function CanvasNoteScreen({ selectedDate, onClose }) {
-  const [loading, setLoading] = useState(false)
-  const [color, setColor] = useState('#000000')
-  const [lineWidth, setLineWidth] = useState(4)
-  const [isDrawing, setIsDrawing] = useState(false)
-  const canvasRef = useRef(null)
-  const contextRef = useRef(null)
+export default function CanvasNotesScreen() {
+  const [notes, setNotes] = useState(() => obtenerDeStorage('family_canvas_notes', []));
+  const [textInput, setTextInput] = useState('');
+  const [noteTitle, setNoteTitle] = useState('');
+  const [isDrawingMode, setIsDrawingMode] = useState(true);
+  const [brushColor, setBrushColor] = useState('#000000');
+  const [brushSize, setBrushSize] = useState(4);
+  const [savedMessage, setSavedMessage] = useState(false);
 
+  const canvasRef = useRef(null);
+  const isDrawing = useRef(false);
+  const lastPos = useRef({ x: 0, y: 0 });
+
+  // Inicializar canvas y redimensionar correctamente
   useEffect(() => {
-    initCanvas()
-    fetchCanvasNote()
-  }, [selectedDate])
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    
+    // Configurar tamaño real del canvas
+    canvas.width = canvas.parentElement.clientWidth - 32;
+    canvas.height = 320;
+    
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = brushColor;
+    ctx.lineWidth = brushSize;
+  }, []);
 
-  const initCanvas = () => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-
-    canvas.width = 600
-    canvas.height = 400
-    canvas.style.width = '100%'
-    canvas.style.height = '100%'
-
-    const context = canvas.getContext('2d')
-    if (!context) return
-
-    context.lineCap = 'round'
-    context.lineJoin = 'round'
-    context.strokeStyle = color
-    context.lineWidth = lineWidth
-    contextRef.current = context
-
-    context.fillStyle = '#FFFFFF'
-    context.fillRect(0, 0, canvas.width, canvas.height)
-  }
-
+  // Actualizar estilos del pincel
   useEffect(() => {
-    if (contextRef.current) {
-      contextRef.current.strokeStyle = color
-      contextRef.current.lineWidth = lineWidth
-    }
-  }, [color, lineWidth])
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.strokeStyle = brushColor;
+    ctx.lineWidth = brushSize;
+  }, [brushColor, brushSize]);
 
-  const fetchCanvasNote = async () => {
-    setLoading(true)
-    const { data, error } = await supabase
-      .from('event_notes')
-      .select('svg_canvas')
-      .eq('event_date', selectedDate)
-      .single()
+  const getCoordinates = (e) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    
+    // Soporte para Touch (Dedos / S-Pen) y Mouse
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
 
-    if (!error && data && data.svg_canvas) {
-      const img = new Image()
-      img.onload = () => {
-        contextRef.current?.drawImage(img, 0, 0)
-      }
-      img.src = data.svg_canvas
-    }
-    setLoading(false)
-  }
+    return {
+      x: clientX - rect.left,
+      y: clientY - rect.top
+    };
+  };
 
   const startDrawing = (e) => {
-    const canvas = canvasRef.current
-    if (!canvas || !contextRef.current) return
-
-    const rect = canvas.getBoundingClientRect()
-    const scaleX = canvas.width / rect.width
-    const scaleY = canvas.height / rect.height
-
-    let clientX = e.clientX
-    let clientY = e.clientY
-
-    if (e.touches && e.touches.length > 0) {
-      clientX = e.touches.clientX
-      clientY = e.touches.clientY
-    }
-
-    const x = (clientX - rect.left) * scaleX
-    const y = (clientY - rect.top) * scaleY
-
-    contextRef.current.beginPath()
-    contextRef.current.moveTo(x, y)
-    setIsDrawing(true)
-  }
+    if (!isDrawingMode) return;
+    e.preventDefault();
+    isDrawing.current = true;
+    lastPos.current = getCoordinates(e);
+  };
 
   const draw = (e) => {
-    if (!isDrawing || !canvasRef.current || !contextRef.current) return
-    e.preventDefault()
+    if (!isDrawing.current || !isDrawingMode) return;
+    e.preventDefault();
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const currentPos = getCoordinates(e);
 
-    const canvas = canvasRef.current
-    const rect = canvas.getBoundingClientRect()
-    const scaleX = canvas.width / rect.width
-    const scaleY = canvas.height / rect.height
+    ctx.beginPath();
+    ctx.moveTo(lastPos.current.x, lastPos.current.y);
+    ctx.lineTo(currentPos.x, currentPos.y);
+    ctx.stroke();
 
-    let clientX = e.clientX
-    let clientY = e.clientY
-
-    if (e.touches && e.touches.length > 0) {
-      clientX = e.touches.clientX
-      clientY = e.touches.clientY
-    }
-
-    const x = (clientX - rect.left) * scaleX
-    const y = (clientY - rect.top) * scaleY
-
-    contextRef.current.lineTo(x, y)
-    contextRef.current.stroke()
-  }
+    lastPos.current = currentPos;
+  };
 
   const stopDrawing = () => {
-    if (!isDrawing) return
-    contextRef.current?.closePath()
-    setIsDrawing(false)
-  }
+    isDrawing.current = false;
+  };
 
   const clearCanvas = () => {
-    const canvas = canvasRef.current
-    const context = contextRef.current
-    if (!canvas || !context) return
-    context.fillStyle = '#FFFFFF'
-    context.fillRect(0, 0, canvas.width, canvas.height)
-  }
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  };
 
-  const saveCanvasNote = async () => {
-    const canvas = canvasRef.current
-    if (!canvas) return
+  const handleSaveNote = () => {
+    const canvas = canvasRef.current;
+    const drawingDataUrl = canvas ? canvas.toDataURL() : '';
 
-    setLoading(true)
-    const dataUrl = canvas.toDataURL('image/png')
+    if (!noteTitle.trim() && !textInput.trim() && !drawingDataUrl) return;
 
-    await supabase
-      .from('event_notes')
-      .upsert({
-        event_date: selectedDate,
-        svg_canvas: dataUrl
-      }, { onConflict: 'event_date' })
+    const newNote = {
+      id: Date.now(),
+      title: aMayusculas(noteTitle || 'Nota Rápida'),
+      text: textInput,
+      drawing: drawingDataUrl,
+      date: new Date().toLocaleDateString('es-MX')
+    };
 
-    setLoading(false)
-  }
+    const updatedNotes = [newNote, ...notes];
+    setNotes(updatedNotes);
+    guardarEnStorage('family_canvas_notes', updatedNotes);
+
+    // Limpiar formulario
+    setNoteTitle('');
+    setTextInput('');
+    clearCanvas();
+    setSavedMessage(true);
+    setTimeout(() => setSavedMessage(false), 3000);
+  };
+
+  const deleteNote = (id) => {
+    const updatedNotes = notes.filter(n => n.id !== id);
+    setNotes(updatedNotes);
+    guardarEnStorage('family_canvas_notes', updatedNotes);
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center p-4 font-sans text-black">
-      <div className="w-full max-w-2xl bg-white border-4 border-black rounded-t-3xl sm:rounded-3xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] overflow-hidden">
+    <div className="min-h-screen bg-[#Fef8e7] p-4 md:p-8 font-mono text-black pb-24 select-none">
+      <div className="max-w-4xl mx-auto space-y-6">
         
-        <div className="p-4 bg-amber-400 border-b-4 border-black flex justify-between items-center">
-          <div>
-            <h3 className="font-black text-lg uppercase tracking-wider">Lienzo S-Pen</h3>
-            <p className="text-xs font-bold text-amber-950 uppercase">Notas Graficas: {selectedDate}</p>
+        {/* CABECERA */}
+        <header className="flex items-center gap-4 border-4 border-black bg-white p-6 rounded-3xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
+          <div className="w-14 h-14 bg-amber-400 border-2 border-black rounded-full flex items-center justify-center shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-2xl shrink-0">
+            📝
           </div>
-          <button onClick={onClose} disabled={loading} className="text-black font-black text-2xl hover:text-red-600 transition-colors">✕</button>
-        </div>
+          <div>
+            <h1 className="text-xl font-black uppercase tracking-tight text-black">
+              {aMayusculas('Notas y Dibujo Libre')}
+            </h1>
+            <p className="text-xs font-bold text-stone-600 uppercase tracking-tight">
+              {aMayusculas('Escribe con teclado o dibuja con S-Pen y tu dedo')}
+            </p>
+          </div>
+        </header>
 
-        <div className="p-6 bg-white space-y-4">
-          <div className="flex flex-wrap gap-3 items-center justify-between border-4 border-black p-3 bg-stone-100 rounded-xl">
-            <div className="flex gap-2">
-              <button onClick={() => setColor('#000000')} className="w-8 h-8 rounded-full border-2 border-black bg-black active:scale-95 transition-transform" />
-              <button onClick={() => setColor('#EF4444')} className="w-8 h-8 rounded-full border-2 border-black bg-red-500 active:scale-95 transition-transform" />
-              <button onClick={() => setColor('#3B82F6')} className="w-8 h-8 rounded-full border-2 border-black bg-blue-500 active:scale-95 transition-transform" />
-              <button onClick={() => setColor('#10B981')} className="w-8 h-8 rounded-full border-2 border-black bg-emerald-500 active:scale-95 transition-transform" />
-              <button onClick={() => setColor('#FBBF24')} className="w-8 h-8 rounded-full border-2 border-black bg-amber-400 active:scale-95 transition-transform" />
+        {/* MENSAJE DE ÉXITO */}
+        {savedMessage && (
+          <div className="border-4 border-black bg-emerald-300 p-4 rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-xs font-black uppercase">
+            ✅ ¡NOTA GUARDADA EXITOSAMENTE EN PANTALLA!
+          </div>
+        )}
+
+        {/* EDITOR DE NOTAS */}
+        <div className="bg-white border-4 border-black p-6 rounded-3xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-4">
+          
+          {/* TÍTULO DE LA NOTA */}
+          <div>
+            <label className="block text-xs font-black uppercase text-stone-600 mb-1">
+              {aMayusculas('Título de la Nota')}
+            </label>
+            <input 
+              type="text"
+              value={noteTitle}
+              onChange={(e) => setNoteTitle(e.target.value)}
+              placeholder="Ej: Compras o Ideas..."
+              className="w-full bg-stone-50 border-3 border-black rounded-xl p-3 font-black text-sm uppercase outline-none focus:bg-amber-50 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+            />
+          </div>
+
+          {/* ESCRITURA POR TECLADO */}
+          <div>
+            <label className="block text-xs font-black uppercase text-stone-600 mb-1">
+              {aMayusculas('Escribir Nota con el Teclado')}
+            </label>
+            <textarea 
+              rows={3}
+              value={textInput}
+              onChange={(e) => setTextInput(e.target.value)}
+              placeholder="Escribe tu texto aquí..."
+              className="w-full bg-stone-50 border-3 border-black rounded-xl p-3 font-bold text-xs uppercase outline-none focus:bg-amber-50 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] resize-none"
+            />
+          </div>
+
+          {/* HERRAMIENTAS DE DIBUJO (S-Pen / Dedos) */}
+          <div className="space-y-2">
+            <div className="flex flex-wrap justify-between items-center gap-2">
+              <label className="text-xs font-black uppercase text-stone-600">
+                {aMayusculas('Área de Dibujo (S-Pen / Dedo)')}
+              </label>
+              
+              <div className="flex items-center gap-2">
+                <input 
+                  type="color" 
+                  value={brushColor}
+                  onChange={(e) => setBrushColor(e.target.value)}
+                  className="w-8 h-8 rounded-lg border-2 border-black cursor-pointer bg-transparent"
+                  title="Color del Pincel"
+                />
+                <button
+                  type="button"
+                  onClick={clearCanvas}
+                  className="px-3 py-1 bg-rose-300 border-2 border-black rounded-lg text-xs font-black uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none cursor-pointer"
+                >
+                  {aMayusculas('Limpiar Lienzo')}
+                </button>
+              </div>
             </div>
-            
-            <div className="flex items-center gap-2">
-              <span className="font-black text-xs uppercase">Grosor:</span>
-              <input
-                type="range"
-                min="2"
-                max="12"
-                value={lineWidth}
-                onChange={(e) => setLineWidth(parseInt(e.target.value))}
-                className="w-24 accent-black"
+
+            {/* LIENZO DE CANVAS */}
+            <div className="border-4 border-black bg-stone-50 rounded-2xl overflow-hidden shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] touch-none">
+              <canvas
+                ref={canvasRef}
+                onMouseDown={startDrawing}
+                onMouseMove={draw}
+                onMouseUp={stopDrawing}
+                onMouseLeave={stopDrawing}
+                onTouchStart={startDrawing}
+                onTouchMove={draw}
+                onTouchEnd={stopDrawing}
+                className="w-full cursor-crosshair bg-white block"
               />
             </div>
-
-            <button
-              onClick={clearCanvas}
-              className="px-3 py-1 bg-white border-2 border-black rounded-lg font-black text-xs uppercase shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none"
-            >
-              Borrar Todo
-            </button>
           </div>
 
-          <div className="w-full aspect-[3/2] border-4 border-black bg-white rounded-2xl overflow-hidden relative touch-none">
-            <canvas
-              ref={canvasRef}
-              onMouseDown={startDrawing}
-              onMouseMove={draw}
-              onMouseUp={stopDrawing}
-              onMouseLeave={stopDrawing}
-              onTouchStart={startDrawing}
-              onTouchMove={draw}
-              onTouchEnd={stopDrawing}
-            />
-            {loading ? (
-              <div className="absolute inset-0 bg-white/80 flex items-center justify-center font-black uppercase text-xs tracking-widest animate-pulse">
-                Procesando Trazos...
-              </div>
-            ) : null}
-          </div>
-
+          {/* BOTÓN GUARDAR NOTA */}
           <button
-            onClick={saveCanvasNote}
-            disabled={loading}
-            className="w-full py-4 bg-amber-400 border-4 border-black rounded-xl font-black text-xl uppercase tracking-wider shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all disabled:opacity-50 text-black"
+            type="button"
+            onClick={handleSaveNote}
+            className="w-full py-3 bg-amber-400 border-4 border-black rounded-2xl font-black text-xs uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none cursor-pointer"
           >
-            {loading ? 'Guardando Lienzo...' : 'Guardar Nota Grafica'}
+            {aMayusculas('Guardar Nota Completa')}
           </button>
+        </div>
+
+        {/* LISTA DE NOTAS GUARDADAS */}
+        <div className="space-y-4">
+          <h2 className="text-sm font-black uppercase tracking-wider text-stone-700">
+            {aMayusculas('Notas Guardadas en Pantalla')}
+          </h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {notes.map((note) => (
+              <div key={note.id} className="bg-white border-4 border-black p-5 rounded-3xl shadow-[5px_5px_0px_0px_rgba(0,0,0,1)] space-y-3 flex flex-col justify-between">
+                <div className="space-y-2">
+                  <div className="flex justify-between items-start gap-2">
+                    <h3 className="font-black text-sm uppercase">{note.title}</h3>
+                    <span className="text-[10px] font-bold bg-amber-100 border-2 border-black px-2 py-0.5 rounded-md">
+                      {note.date}
+                    </span>
+                  </div>
+
+                  {note.text && (
+                    <p className="text-xs font-bold text-stone-800 uppercase bg-stone-50 p-3 rounded-xl border-2 border-black">
+                      {note.text}
+                    </p>
+                  )}
+
+                  {note.drawing && (
+                    <div className="border-2 border-black rounded-xl overflow-hidden bg-white">
+                      <img src={note.drawing} alt="Dibujo nota" className="w-full h-36 object-contain" />
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => deleteNote(note.id)}
+                  className="w-full py-2 bg-rose-400 border-2 border-black rounded-xl font-black text-xs uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none cursor-pointer"
+                >
+                  {aMayusculas('Eliminar Nota')}
+                </button>
+              </div>
+            ))}
+
+            {notes.length === 0 && (
+              <div className="col-span-full py-12 text-center bg-white border-4 border-black rounded-3xl shadow-[5px_5px_0px_0px_rgba(0,0,0,1)] text-stone-400 font-black text-xs uppercase">
+                {aMayusculas('No hay notas guardadas todavía.')}
+              </div>
+            )}
+          </div>
         </div>
 
       </div>
     </div>
-  )
+  );
 }
