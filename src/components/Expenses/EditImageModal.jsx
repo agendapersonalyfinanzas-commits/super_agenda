@@ -1,22 +1,10 @@
 import React, { useRef, useState } from 'react';
-import { PRESET_MAP } from '../UI/Icons';
-
-// Corrección de ruta: 2 niveles arriba (../../utils)
+import { PRESET_MAP, PRESETS } from '../UI/Icons';
 import { manejarInputMayusculas } from '../../utils/mayusculas.js';
 
 export default function EditImageModal({ onClose, currentLabel, onSaveConfig }) {
   const fileInputRef = useRef(null);
   const [newLabel, setNewLabel] = useState(currentLabel || '');
-
-  const presets = [
-    { name: 'Súper Charlie', key: 'charlie-market' },
-    { name: 'Reparaciones Snoopy', key: 'snoopy-repair' },
-    { name: 'Comidas Snoopy', key: 'snoopy-food' },
-    { name: 'Viajes Woodstock', key: 'woodstock-travel' },
-    { name: 'Gasolina Snoopy', key: 'gasolina' },
-    { name: 'Snoopy Héroe', key: 'super-snoopy' },
-    { name: 'Lucy Contable', key: 'lucy-analytics' }
-  ];
 
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
@@ -28,6 +16,8 @@ export default function EditImageModal({ onClose, currentLabel, onSaveConfig }) 
       reader.readAsDataURL(file);
     }
   };
+
+  const availablePresets = PRESETS || [];
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center p-4 font-mono select-none">
@@ -50,7 +40,7 @@ export default function EditImageModal({ onClose, currentLabel, onSaveConfig }) 
             <input 
               type="text" 
               value={newLabel} 
-              onChange={manejarInputMayusculas(setNewLabel)} 
+              onChange={manejarInputMayusculas ? manejarInputMayusculas(setNewLabel) : (e) => setNewLabel(e.target.value.toUpperCase())} 
               className="flex-1 px-3 py-2 border-2 border-black rounded-xl text-sm font-bold text-black uppercase focus:outline-none focus:ring-2 focus:ring-amber-400" 
               placeholder="CAMBIAR NOMBRE..." 
             />
@@ -78,23 +68,26 @@ export default function EditImageModal({ onClose, currentLabel, onSaveConfig }) 
         <div className="space-y-2 pt-2 border-t-2 border-dashed border-stone-200">
           <h4 className="text-xs font-black uppercase text-stone-600">Cambiar Personaje de la App</h4>
           <div className="grid grid-cols-3 gap-2">
-            {presets.map((preset, idx) => (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => onSaveConfig({ label: newLabel, presetKey: preset.key, customData: null })}
-                className="flex flex-col items-center p-2 border-2 border-black rounded-xl bg-stone-50 hover:bg-amber-100 transition-colors cursor-pointer"
-              >
-                <div className="w-10 h-10 overflow-hidden rounded-full border border-black bg-white flex items-center justify-center">
-                  {PRESET_MAP[preset.key] ? (
-                    <img src={PRESET_MAP[preset.key]} alt="Img" className="w-full h-full object-cover scale-125 pointer-events-none" />
-                  ) : (
-                    <span className="text-xs font-black">⭐</span>
-                  )}
-                </div>
-                <span className="text-[9px] font-bold text-center mt-1 text-black block truncate w-full uppercase">{preset.name}</span>
-              </button>
-            ))}
+            {availablePresets.map((preset) => {
+              const imgSrc = preset.src || (PRESET_MAP && PRESET_MAP[preset.key]);
+              return (
+                <button
+                  key={preset.key}
+                  type="button"
+                  onClick={() => onSaveConfig({ label: newLabel, presetKey: preset.key, customData: null })}
+                  className="flex flex-col items-center p-2 border-2 border-black rounded-xl bg-stone-50 hover:bg-amber-100 transition-colors cursor-pointer"
+                >
+                  <div className="w-10 h-10 overflow-hidden rounded-full border border-black bg-white flex items-center justify-center">
+                    {imgSrc ? (
+                      <img src={imgSrc} alt={preset.name} className="w-full h-full object-cover scale-125 pointer-events-none" />
+                    ) : (
+                      <span className="text-xs font-black">⭐</span>
+                    )}
+                  </div>
+                  <span className="text-[9px] font-bold text-center mt-1 text-black block truncate w-full uppercase">{preset.name}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
