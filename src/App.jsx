@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 // Importación de las pantallas reales de tu aplicación
 import DashboardScreen from './components/UI/screens/DashboardScreen.jsx';
@@ -6,8 +6,16 @@ import CalendarScreen from './components/UI/screens/CalendarScreen.jsx';
 import AnalyticsScreen from './components/UI/screens/AnalyticsScreen.jsx';
 import Navigation from './components/UI/Navigation.jsx';
 
+// Importación del servicio de notificaciones PWA
+import { solicitarPermisoNotificaciones } from './utils/notifications.js';
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('finances'); // 'finances' | 'agenda' | 'metrics'
+
+  // Solicitar permiso de notificaciones cuando el usuario abre la app
+  useEffect(() => {
+    solicitarPermisoNotificaciones();
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#Fef8e7] font-mono selection:bg-amber-300 relative pb-28">
