@@ -1,11 +1,13 @@
 import React from 'react'
-import snoopyFoodImg from '../../assets/snoopy-food.png'
-import woodstockTravelImg from '../../assets/woodstock-travel.png'
-import charlieMarketImg from '../../assets/charlie-market.png'
-import snoopyRepairImg from '../../assets/snoopy-repair.png'
-import superSnoopyImg from '../../assets/super-snoopy.png'
-import lucyAnalyticsImg from '../../assets/lucy-analytics.png'
-import snoopyGasolinaImg from '../../assets/snoopy-gasolina.png' // Enlace corregido en limpio
+
+// Rutas directas apuntando a la carpeta public/
+const snoopyFoodImg = '/snoopy-food.png'
+const woodstockTravelImg = '/woodstock-travel.png'
+const charlieMarketImg = '/charlie-market.png'
+const snoopyRepairImg = '/snoopy-repair.png'
+const superSnoopyImg = '/super-snoopy.png'
+const lucyAnalyticsImg = '/lucy-analytics.png'
+const snoopyGasolinaImg = '/snoopy-gasolina.png'
 
 export const PRESET_MAP = {
   'charlie-market': charlieMarketImg,
@@ -14,7 +16,7 @@ export const PRESET_MAP = {
   'woodstock-travel': woodstockTravelImg,
   'super-snoopy': superSnoopyImg,
   'lucy-analytics': lucyAnalyticsImg,
-  'gasolina': snoopyGasolinaImg // Conexión directa a tu ilustración
+  'gasolina': snoopyGasolinaImg
 }
 
 export const SnoopyFoodIcon = () => <img src={snoopyFoodImg} alt="C" className="w-full h-full object-cover scale-125 pointer-events-none" />

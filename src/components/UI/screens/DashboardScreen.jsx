@@ -16,20 +16,20 @@ import * as EditImageModalModule from '../../Expenses/EditImageModal';
 import * as OCRScannerModule from '../../Expenses/OCRScanner';
 import * as QuickExpenseButtonModule from '../QuickExpenseButton';
 
-// Imágenes de personajes / iconos
-import charlieMarket from '../../../assets/charlie-market.png';
-import linusDulces from '../../../assets/linus-dulces.png';
-import lucyAnalytics from '../../../assets/lucy-analytics.png';
-import lucySecretaria from '../../../assets/lucy-secretaria.png';
-import sallyOficinista from '../../../assets/sally-oficinista.png';
-import schroederLimonada from '../../../assets/schroeder-limonada.png';
-import snoopyFood from '../../../assets/snoopy-food.png';
-import snoopyGasolina from '../../../assets/snoopy-gasolina.png';
-import snoopyMaestro from '../../../assets/snoopy-maestro.png';
-import snoopyRepair from '../../../assets/snoopy-repair.png';
-import snoppyAlquiler from '../../../assets/snoppy-alquiler.png';
-import superSnoopy from '../../../assets/super-snoopy.png';
-import woodstockTravel from '../../../assets/woodstock-travel.png';
+// Rutas estáticas de imágenes / iconos desde la carpeta public
+const charlieMarket = '/charlie-market.png';
+const linusDulces = '/linus-dulces.png';
+const lucyAnalytics = '/lucy-analytics.png';
+const lucySecretaria = '/lucy-secretaria.png';
+const sallyOficinista = '/sally-oficinista.png';
+const schroederLimonada = '/schroeder-limonada.png';
+const snoopyFood = '/snoopy-food.png';
+const snoopyGasolina = '/snoopy-gasolina.png';
+const snoopyMaestro = '/snoopy-maestro.png';
+const snoopyRepair = '/snoopy-repair.png';
+const snoppyAlquiler = '/snoppy-alquiler.png';
+const superSnoopy = '/super-snoopy.png';
+const woodstockTravel = '/woodstock-travel.png';
 
 // RESOLUCIÓN SEGURA DE COMPONENTES
 const resolveComponent = (module, fallbackName) => {

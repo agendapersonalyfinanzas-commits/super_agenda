@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { supabase } from '../../../supabaseClient'
-import superSnoopyImg from '../../../assets/super-snoopy.png'
+import superSnoopyImg from '../../../super-snoopy.png'
 
 export default function AuthScreen({ onAuthSuccess }) {
   const [email, setEmail] = useState('')
