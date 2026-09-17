@@ -5,6 +5,7 @@ import { supabase } from '../../supabaseClient'
 export default function QuickActionSection({ playerId }) {
   const [quickActions, setQuickActions] = useState([])
   const [loading, setLoading] = useState(true)
+  const [draggedIndex, setDraggedIndex] = useState(null)
 
   // 1. Cargar botones desde la base de datos
   const fetchQuickActions = async () => {
@@ -32,7 +33,43 @@ export default function QuickActionSection({ playerId }) {
     fetchQuickActions()
   }, [playerId])
 
-  // 2. Registrar la transacción en la base de datos al presionar un botón
+  // 2. Lógica para reordenar (Drag & Drop) y guardar en Supabase
+  const handleDragStart = (e, index) => {
+    setDraggedIndex(index)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  const handleDragOver = (e) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+  }
+
+  const handleDrop = async (e, dropIndex) => {
+    e.preventDefault()
+    if (draggedIndex === null || draggedIndex === dropIndex) return
+
+    // Reordenar en estado local
+    const updatedActions = [...quickActions]
+    const [movedItem] = updatedActions.splice(draggedIndex, 1)
+    updatedActions.splice(dropIndex, 0, movedItem)
+
+    setQuickActions(updatedActions)
+    setDraggedIndex(null)
+
+    // Guardar el nuevo sort_order en Supabase
+    try {
+      for (let i = 0; i < updatedActions.length; i++) {
+        await supabase
+          .from('quick_actions')
+          .update({ sort_order: i + 1 })
+          .eq('id', updatedActions[i].id)
+      }
+    } catch (err) {
+      console.error('Error al actualizar el orden en Supabase:', err.message)
+    }
+  }
+
+  // 3. Registrar la transacción en la base de datos al presionar un botón
   const handleSaveTransaction = async (actionData) => {
     try {
       const { error } = await supabase
@@ -77,15 +114,28 @@ export default function QuickActionSection({ playerId }) {
         </div>
       ) : (
         <div className="grid grid-cols-3 gap-4 justify-items-center">
-          {quickActions.map((action) => (
-            <QuickExpenseButton
+          {quickActions.map((action, index) => (
+            <div
               key={action.id}
-              icon={action.icon_url}
-              label={action.label}
-              defaultAmount={action.default_amount}
-              category={action.category}
-              onSave={(data) => handleSaveTransaction({ ...data, type: action.action_type })}
-            />
+              draggable
+              onDragStart={(e) => handleDragStart(e, index)}
+              onDragOver={handleDragOver}
+              onDrop={(e) => handleDrop(e, index)}
+              className={`relative cursor-grab active:cursor-grabbing transition-all select-none ${
+                draggedIndex === index ? 'opacity-30 scale-95' : 'opacity-100'
+              }`}
+            >
+              <span className="absolute -top-1 -right-1 text-[10px] text-stone-500 font-black pointer-events-none z-10">
+                ⋮⋮
+              </span>
+              <QuickExpenseButton
+                icon={action.icon_url}
+                label={action.label}
+                defaultAmount={action.default_amount}
+                category={action.category}
+                onSave={(data) => handleSaveTransaction({ ...data, type: action.action_type })}
+              />
+            </div>
           ))}
         </div>
       )}
