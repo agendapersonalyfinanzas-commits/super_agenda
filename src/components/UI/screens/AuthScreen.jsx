@@ -1,10 +1,12 @@
 import React, { useState } from 'react'
 import { supabase } from '../../../supabaseClient'
-import superSnoopyImg from '../../../super-snoopy.png'
 
 export default function AuthScreen({ onAuthSuccess }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [firstName, setFirstName] = useState('')
+  const [paternalSurname, setPaternalSurname] = useState('')
+  const [maternalSurname, setMaternalSurname] = useState('')
   const [loading, setLoading] = useState(false)
   const [isRegister, setIsRegister] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
@@ -14,18 +16,33 @@ export default function AuthScreen({ onAuthSuccess }) {
     e.preventDefault()
     if (!email.trim() || !password.trim()) return
 
+    if (isRegister && (!firstName.trim() || !paternalSurname.trim())) {
+      setErrorMsg('Por favor ingresa tu nombre y apellido paterno.')
+      return
+    }
+
     setLoading(true)
     setErrorMsg('')
     setInfoMsg('')
 
     try {
       if (isRegister) {
-        const { data, error } = await supabase.auth.signUp({ email, password })
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              first_name: firstName.trim().toUpperCase(),
+              paternal_surname: paternalSurname.trim().toUpperCase(),
+              maternal_surname: maternalSurname.trim().toUpperCase()
+            }
+          }
+        })
         if (error) throw error
         if (data?.user && data.user.identities?.length === 0) {
           setErrorMsg('Este correo ya se encuentra registrado. Intenta iniciar sesión.')
         } else {
-          setInfoMsg('¡Cuenta creada con éxito! Verifica tu correo para confirmar tu registro.')
+          setInfoMsg('¡Cuenta creada con éxito! Ya puedes iniciar sesión.')
         }
       } else {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password })
@@ -47,7 +64,7 @@ export default function AuthScreen({ onAuthSuccess }) {
         
         <div className="text-center space-y-3">
           <div className="w-20 h-20 rounded-full border-4 border-black bg-stone-50 overflow-hidden mx-auto shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] flex items-center justify-center">
-            <img src={superSnoopyImg} alt="Snoopy Héroe" className="w-full h-full object-cover" />
+            <img src="/super-snoopy.png" alt="Snoopy Héroe" className="w-full h-full object-cover" />
           </div>
           <div>
             <h2 className="text-2xl font-black uppercase tracking-wide">Acceso Seguro</h2>
@@ -68,6 +85,50 @@ export default function AuthScreen({ onAuthSuccess }) {
         )}
 
         <form onSubmit={handleAuthSubmit} className="space-y-4">
+          
+          {/* Campos adicionales exclusivos para Registro */}
+          {isRegister && (
+            <>
+              <div className="space-y-1">
+                <label className="text-xs font-black uppercase text-stone-600 block">Nombre(s)</label>
+                <input
+                  type="text"
+                  required
+                  disabled={loading}
+                  placeholder="LUIS RICARDO"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  className="w-full px-4 py-3 border-4 border-black rounded-xl text-sm font-bold focus:outline-none focus:bg-stone-50 text-black placeholder-stone-400 uppercase"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-black uppercase text-stone-600 block">Apellido Paterno</label>
+                <input
+                  type="text"
+                  required
+                  disabled={loading}
+                  placeholder="VILLALOBOS"
+                  value={paternalSurname}
+                  onChange={(e) => setPaternalSurname(e.target.value)}
+                  className="w-full px-4 py-3 border-4 border-black rounded-xl text-sm font-bold focus:outline-none focus:bg-stone-50 text-black placeholder-stone-400 uppercase"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-black uppercase text-stone-600 block">Apellido Materno (Opcional)</label>
+                <input
+                  type="text"
+                  disabled={loading}
+                  placeholder="FORTUN"
+                  value={maternalSurname}
+                  onChange={(e) => setMaternalSurname(e.target.value)}
+                  className="w-full px-4 py-3 border-4 border-black rounded-xl text-sm font-bold focus:outline-none focus:bg-stone-50 text-black placeholder-stone-400 uppercase"
+                />
+              </div>
+            </>
+          )}
+
           <div className="space-y-1">
             <label className="text-xs font-black uppercase text-stone-600 block">Correo Electrónico</label>
             <input

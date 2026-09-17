@@ -1,12 +1,38 @@
 import React, { useState, useEffect } from 'react';
+import { supabase } from '../../supabaseClient'; // <--- Corregido a 2 niveles hacia arriba
 
-export default function DashboardHeader() {
+export default function DashboardHeader({ userName, activeUser, onOcrOpen }) {
   const [time, setTime] = useState(new Date());
+  const [displayName, setDisplayName] = useState(userName || activeUser || 'SUPER USUARIO');
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (userName || activeUser) {
+      setDisplayName(userName || activeUser);
+      return;
+    }
+
+    const fetchUser = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const name = user.user_metadata?.full_name || user.email?.split('@')[0] || 'SUPER USUARIO';
+          setDisplayName(name.toUpperCase());
+        } else {
+          const stored = localStorage.getItem('activeUser') || localStorage.getItem('userName');
+          if (stored) setDisplayName(stored.toUpperCase());
+        }
+      } catch (e) {
+        console.error("Error al obtener el usuario:", e);
+      }
+    };
+
+    fetchUser();
+  }, [userName, activeUser]);
 
   const seconds = time.getSeconds();
   const minutes = time.getMinutes();
@@ -31,6 +57,14 @@ export default function DashboardHeader() {
   return (
     <div className="bg-[#FBBF24] border-4 border-black rounded-3xl p-4 sm:p-5 shadow-[6px_6px_0px_rgba(0,0,0,1)] flex flex-col items-center gap-4 text-center select-none">
       
+      {/* SALUDO DINÁMICO */}
+      <div className="bg-white border-2 border-black px-3 py-1 rounded-full shadow-[2px_2px_0px_rgba(0,0,0,1)] flex items-center gap-1.5 -rotate-1">
+        <span className="text-xs">⭐</span>
+        <span className="font-black text-xs uppercase tracking-wider text-black">
+          ¡BIENVENIDO, {displayName} !
+        </span>
+      </div>
+
       {/* Insignia / Título de la App */}
       <div className="flex flex-col items-center">
         <span className="bg-black text-white text-[10px] font-black tracking-widest uppercase px-3 py-0.5 rounded-full border-2 border-white mb-1 shadow-[2px_2px_0px_rgba(0,0,0,1)]">
@@ -63,7 +97,7 @@ export default function DashboardHeader() {
           </span>
         </div>
 
-        {/* MEDIDOR 2: MINUTOS (SNOOPY - MÁS GRANDE CON LECTURA DE MINUTOS) */}
+        {/* MEDIDOR 2: MINUTOS (SNOOPY) */}
         <div className="flex flex-col items-center z-20">
           <div className="relative w-40 h-40 sm:w-44 sm:h-44 rounded-full border-4 border-black bg-white shadow-[7px_7px_0px_rgba(0,0,0,1)] shrink-0 overflow-hidden flex items-center justify-center">
             
@@ -83,7 +117,6 @@ export default function DashboardHeader() {
             <div className="absolute w-5 h-5 bg-yellow-400 border-2 border-black rounded-full z-30 shadow-md" />
           </div>
 
-          {/* ETIQUETA ROJA CON MINUTOS DINÁMICOS */}
           <span className="mt-2 font-black text-xs sm:text-sm text-white bg-red-600 px-3.5 py-1 rounded-md border-2 border-black shadow-[2px_2px_0px_rgba(0,0,0,1)] rotate-1">
             ✈ {String(minutes).padStart(2, '0')} MINUTOS
           </span>
@@ -116,7 +149,10 @@ export default function DashboardHeader() {
 
       {/* Botón de Acción y Contenedor de Fecha */}
       <div className="w-full flex flex-col gap-3 mt-1">
-        <button className="w-full bg-white border-[3px] border-black rounded-2xl py-2.5 px-4 font-black text-black shadow-[4px_4px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all flex items-center justify-center gap-2 text-sm uppercase">
+        <button 
+          onClick={onOcrOpen}
+          className="w-full bg-white border-[3px] border-black rounded-2xl py-2.5 px-4 font-black text-black shadow-[4px_4px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all flex items-center justify-center gap-2 text-sm uppercase"
+        >
           📸 ESCANEAR TICKET
         </button>
 

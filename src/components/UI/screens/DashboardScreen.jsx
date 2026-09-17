@@ -72,15 +72,41 @@ const PRESET_ICONS = [
 const SAMPLE_USERS = ['SNOOPY (MUESTRA)', 'CHARLIE BROWN (MUESTRA)', 'LUCY (MUESTRA)'];
 
 const INITIAL_EXPENSES = [
-  { label: 'SUPER', default_amount: 0, category: 'DESPENSA', icon_url: charlieMarket, action_type: 'expense', sort_order: 1 },
-  { label: 'REPARACIÓN', default_amount: 0, category: 'SERVICIOS', icon_url: snoopyRepair, action_type: 'expense', sort_order: 2 },
+  { 
+    label: 'SUPER', 
+    default_amount: 0, 
+    category: 'DESPENSA', 
+    icon_url: charlieMarket, 
+    action_type: 'expense', 
+    sort_order: 1 
+  },
+  { 
+    label: 'REPARACIÓN', 
+    default_amount: 0, 
+    category: 'SERVICIOS', 
+    icon_url: snoopyRepair, 
+    action_type: 'expense', 
+    sort_order: 2 
+  },
 ];
 
 const INITIAL_INCOMES = [
-  { label: 'SALARIO', default_amount: 0, category: 'TRABAJO', icon_url: sallyOficinista, action_type: 'income', sort_order: 1 },
+  { 
+    label: 'SALARIO', 
+    default_amount: 0, 
+    category: 'TRABAJO', 
+    icon_url: sallyOficinista, 
+    action_type: 'income', 
+    sort_order: 1 
+  },
 ];
 
 export default function DashboardScreen() {
+  // --- ESTADOS DE SEGURIDAD Y MODO DIOS ---
+  const [currentUser, setCurrentUser] = useState(null);
+  const [auditorMode, setAuditorMode] = useState(false);
+  // ----------------------------------------
+
   const [isOcrOpen, setIsOcrOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [showAddPlayerRow, setShowAddPlayerRow] = useState(false);
@@ -123,6 +149,20 @@ export default function DashboardScreen() {
 
   const isSeedingRef = useRef(false);
 
+  // --- EFFECT PARA OBTENER EL USUARIO AUTENTICADO ---
+  useEffect(() => {
+    const fetchUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setCurrentUser(user);
+      }
+    };
+    fetchUser();
+  }, []);
+
+  const isMasterAuditor = currentUser?.email === 'maestroluisricardo17@gmail.com';
+  // --------------------------------------------------
+
   useEffect(() => {
     guardarEnStorage(KEYS.ACTIVE_USER, activeUser);
   }, [activeUser]);
@@ -164,11 +204,22 @@ export default function DashboardScreen() {
       setQuickButtons(cleanedActions.filter((a) => a.action_type === 'expense'));
       setQuickIncomes(cleanedActions.filter((a) => a.action_type === 'income'));
 
-      const { data: trans, error: transError } = await supabase
+      // --- FILTRO DE MODO AUDITOR ---
+      let transQuery = supabase
         .from('transactions')
         .select('*')
         .order('transaction_date', { ascending: false });
       
+      // Si eres el maestro pero el switch está APAGADO, filtras solo para ti.
+      // Si no eres el maestro, filtras obligatoriamente para ti.
+      // Solo si eres maestro Y el switch está ENCENDIDO, pides toda la base de datos.
+      if ((isMasterAuditor && !auditorMode) || !isMasterAuditor) {
+        transQuery = transQuery.eq('user_name', activeUser);
+      }
+
+      const { data: trans, error: transError } = await transQuery;
+      // ------------------------------
+
       if (!transError && trans) {
         setRecentTransactions(trans);
 
@@ -217,9 +268,10 @@ export default function DashboardScreen() {
     }
   };
 
+  // Se añade auditorMode y currentUser a las dependencias para refrescar en tiempo real
   useEffect(() => {
     fetchActionsAndTotals();
-  }, [customUsers, activeUser]);
+  }, [customUsers, activeUser, auditorMode, currentUser]);
 
   // --- PERSISTENCIA DE ORDEN EN SUPABASE ---
   const saveNewOrder = async (newList) => {
@@ -407,12 +459,89 @@ export default function DashboardScreen() {
     setActiveImageTarget(null);
   };
 
+  // --- CIERRE DE SESIÓN RADICAL (SUPABASE + LOCALSTORAGE + SESSIONSTORAGE + COOKIES) ---
+  const handleSignOut = async () => {
+    try {
+      await supabase.auth.signOut({ scope: 'global' });
+    } catch (err) {
+      console.error('Error al cerrar sesión en servidor:', err);
+    }
+
+    // 1. Limpiar localStorage de cualquier rastro de supabase o tokens
+    try {
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.includes('sb-') || key.includes('supabase') || key.includes('auth') || key.includes('token'))) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(k => localStorage.removeItem(k));
+    } catch (e) {}
+
+    // 2. Limpiar sessionStorage por completo
+    try {
+      sessionStorage.clear();
+    } catch (e) {}
+
+    // 3. Destruir todas las cookies del navegador (por si Supabase guarda la sesión en cookies)
+    try {
+      const cookies = document.cookie.split(';');
+      for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i];
+        const eqPos = cookie.indexOf('=');
+        const name = eqPos > -1 ? cookie.substr(0, eqPos).trim() : cookie.trim();
+        document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
+        document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=${window.location.hostname}`;
+      }
+    } catch (e) {}
+
+    // 4. Forzar recarga absoluta de la aplicación
+    window.location.href = window.location.origin;
+  };
+
   const availableUsersList = Array.from(new Set([activeUser, ...customUsers, ...activePlayers.map(p => p.username)]));
 
   return (
     <div className="min-h-screen bg-[#Fef8e7] p-4 md:p-8 font-mono text-black pb-24 select-none relative">
       <div className="max-w-4xl mx-auto space-y-8">
         
+        {/* NUEVA BARRA SUPERIOR CON MODO DIOS Y BOTÓN SALIR */}
+        <div className="flex justify-between items-center mb-2">
+          
+          {/* El interruptor invisible para usuarios normales */}
+          {isMasterAuditor ? (
+            <div className={`flex items-center gap-3 px-4 py-2 rounded-xl border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-colors duration-300 ${auditorMode ? 'bg-red-500' : 'bg-stone-900'}`}>
+              <span className={`text-[10px] font-black uppercase tracking-widest ${auditorMode ? 'text-white' : 'text-amber-400'}`}>
+                {auditorMode ? '🔴 DIOS' : '🕵️‍♂️ NORMAL'}
+              </span>
+              <button
+                onClick={() => setAuditorMode(!auditorMode)}
+                className={`relative w-12 h-6 border-2 border-black rounded-full cursor-pointer transition-colors ${auditorMode ? 'bg-amber-300' : 'bg-stone-600'}`}
+              >
+                <div className={`w-4 h-4 bg-white border-2 border-black rounded-full absolute top-0.5 transition-transform duration-300 ${auditorMode ? 'translate-x-5.5' : 'translate-x-1'}`} />
+              </button>
+            </div>
+          ) : (
+            <div /> /* Espaciador para mantener a la derecha el botón de cerrar sesión */
+          )}
+
+          <button
+            type="button"
+            onClick={handleSignOut}
+            className="px-4 py-2 bg-rose-500 hover:bg-rose-600 text-white border-4 border-black rounded-xl font-black text-xs uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+          >
+            🚪 Cerrar Sesión
+          </button>
+        </div>
+
+        {/* ALERTA VISUAL OPCIONAL DE MODO DIOS */}
+        {auditorMode && (
+          <div className="bg-red-500 text-white border-4 border-black p-3 rounded-xl text-center font-black text-xs uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] animate-pulse tracking-wide mb-4">
+            ⚠️ Precaución
+          </div>
+        )}
+
         {/* CABECERA */}
         <DashboardHeader onOcrOpen={() => setIsOcrOpen(true)} />
         
