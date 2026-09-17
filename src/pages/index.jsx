@@ -1,12 +1,12 @@
 import React, { useState } from 'react'
-import DashboardScreen from './components/UI/screens/DashboardScreen'
-import CalendarGrid from './services/CalendarGrid'
-import DayChecklist from './components/Calendar/DayChecklist'
-import AnalyticsScreen from './components/UI/screens/AnalyticsScreen'
-import CanvasNoteScreen from './components/UI/screens/CanvasNoteScreen'
-import Navigation from './components/UI/Navigation'
+import DashboardScreen from '../screens/DashboardScreen'
+import CalendarGrid from '../components/Calendar/CalendarGrid'
+import AnalyticsScreen from '../screens/AnalyticsScreen'
+import DayChecklist from '../components/Calendar/DayChecklist'
+import CanvasNoteScreen from '../screens/CanvasNoteScreen'
+import Navigation from '../components/UI/Navigation'
 
-export default function App() {
+export default function Home() {
   const [activeTab, setActiveTab] = useState('dashboard')
   const [selectedDate, setSelectedDate] = useState(null)
   const [activeModal, setActiveModal] = useState(null)
