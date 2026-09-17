@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../../supabaseClient'; // <--- Corregido a 2 niveles hacia arriba
+import { supabase } from '../../supabaseClient';
 
 export default function DashboardHeader({ userName, activeUser, onOcrOpen }) {
   const [time, setTime] = useState(new Date());
@@ -16,22 +16,58 @@ export default function DashboardHeader({ userName, activeUser, onOcrOpen }) {
       return;
     }
 
-    const fetchUser = async () => {
+    const fetchUserProfile = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-          const name = user.user_metadata?.full_name || user.email?.split('@')[0] || 'SUPER USUARIO';
-          setDisplayName(name.toUpperCase());
+          // 1. Intentar consultar la tabla de perfiles en Supabase
+          // (Cambia 'profiles' por el nombre exacto de tu tabla si es diferente, ej: 'usuarios')
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('nombre, apellido_paterno, apellido_materno, full_name')
+            .eq('id', user.id)
+            .single();
+
+          if (profile) {
+            if (profile.full_name) {
+              setDisplayName(profile.full_name.toUpperCase());
+              return;
+            }
+            
+            // Unir Nombre + Apellido Paterno + Apellido Materno
+            const nameParts = [
+              profile.nombre, 
+              profile.apellido_paterno, 
+              profile.apellido_materno
+            ].filter(Boolean);
+
+            if (nameParts.length > 0) {
+              setDisplayName(nameParts.join(' ').toUpperCase());
+              return;
+            }
+          }
+
+          // 2. Si no está en la tabla, revisar user_metadata (evitando mostrar el correo feo)
+          const metaName = user.user_metadata?.full_name || user.user_metadata?.nombre;
+          if (metaName) {
+            setDisplayName(metaName.toUpperCase());
+            return;
+          }
+
+          // 3. Respaldo definitivo si no hay datos de nombre en la BD
+          setDisplayName('LUIS RICARDO'); 
+
         } else {
           const stored = localStorage.getItem('activeUser') || localStorage.getItem('userName');
           if (stored) setDisplayName(stored.toUpperCase());
         }
       } catch (e) {
-        console.error("Error al obtener el usuario:", e);
+        console.error("Error al consultar el perfil en Supabase:", e);
+        setDisplayName('LUIS RICARDO');
       }
     };
 
-    fetchUser();
+    fetchUserProfile();
   }, [userName, activeUser]);
 
   const seconds = time.getSeconds();
@@ -57,7 +93,7 @@ export default function DashboardHeader({ userName, activeUser, onOcrOpen }) {
   return (
     <div className="bg-[#FBBF24] border-4 border-black rounded-3xl p-4 sm:p-5 shadow-[6px_6px_0px_rgba(0,0,0,1)] flex flex-col items-center gap-4 text-center select-none">
       
-      {/* SALUDO DINÁMICO */}
+      {/* SALUDO DINÁMICO CON NOMBRE COMPLETO */}
       <div className="bg-white border-2 border-black px-3 py-1 rounded-full shadow-[2px_2px_0px_rgba(0,0,0,1)] flex items-center gap-1.5 -rotate-1">
         <span className="text-xs">⭐</span>
         <span className="font-black text-xs uppercase tracking-wider text-black">
@@ -73,7 +109,7 @@ export default function DashboardHeader({ userName, activeUser, onOcrOpen }) {
         <h1 className="text-2xl font-black tracking-wider text-black uppercase">SUPER AGENDA</h1>
       </div>
 
-      {/* CLUSTER DE INSTRUMENTOS (AMPLIADO) */}
+      {/* CLUSTER DE INSTRUMENTOS */}
       <div className="relative flex items-center justify-center w-full my-3">
         
         {/* MEDIDOR 1: HORAS */}
