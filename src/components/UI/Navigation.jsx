@@ -27,12 +27,19 @@ export default function Navigation({ activeTab, setActiveTab }) {
       icon: iconMetricas, 
       bgColor: 'bg-sky-300', 
       activeBg: 'bg-sky-400'
+    },
+    { 
+      id: 'games', 
+      label: 'Juegos', 
+      icon: '/snoopy-aviator.png', // Usamos a Snoopy aviator como icono del hangar
+      bgColor: 'bg-yellow-400', 
+      activeBg: 'bg-yellow-500'
     }
   ];
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-[#Fef8e7] border-t-4 border-black p-3 z-40 font-mono shadow-[0px_-6px_0px_0px_rgba(0,0,0,1)] select-none">
-      <div className="max-w-md mx-auto grid grid-cols-3 gap-3">
+      <div className="max-w-lg mx-auto grid grid-cols-4 gap-2.5">
         {navItems.map((item) => {
           const isActive = activeTab === item.id;
           return (
@@ -57,9 +64,9 @@ export default function Navigation({ activeTab, setActiveTab }) {
               <div className="absolute inset-0 bg-linear-to-t from-black/50 via-transparent to-transparent pointer-events-none" />
 
               {/* Etiqueta de texto inferior con su color retro característico */}
-              <div className={`relative z-10 border-2 border-black rounded-xl py-1 px-1 text-center font-black uppercase text-[10px] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${
+              <div className={`relative z-10 border-2 border-black rounded-xl py-1 px-0.5 text-center font-black uppercase text-[9px] sm:text-[10px] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${
                 isActive ? item.activeBg : item.bgColor
-              } text-black`}>
+              } text-black truncate`}>
                 {item.label}
               </div>
             </button>

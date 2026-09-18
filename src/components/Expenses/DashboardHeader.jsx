@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
 
-export default function DashboardHeader({ userName, activeUser, onOcrOpen }) {
+export default function DashboardHeader({ user_name, activeUser, onOcrOpen }) {
   const [time, setTime] = useState(new Date());
-  const [displayName, setDisplayName] = useState(userName || activeUser || 'SUPER USUARIO');
+  const [displayName, setDisplayName] = useState(user_name || activeUser || 'SUPER USUARIO');
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
@@ -11,8 +11,8 @@ export default function DashboardHeader({ userName, activeUser, onOcrOpen }) {
   }, []);
 
   useEffect(() => {
-    if (userName || activeUser) {
-      setDisplayName(userName || activeUser);
+    if (user_name || activeUser) {
+      setDisplayName(user_name || activeUser);
       return;
     }
 
@@ -20,21 +20,15 @@ export default function DashboardHeader({ userName, activeUser, onOcrOpen }) {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-          // 1. Intentar consultar la tabla de perfiles en Supabase
-          // (Cambia 'profiles' por el nombre exacto de tu tabla si es diferente, ej: 'usuarios')
+          // 1. Consultar la tabla de perfiles usando .maybeSingle() para evitar errores 406 si no existe el registro
           const { data: profile } = await supabase
             .from('profiles')
-            .select('nombre, apellido_paterno, apellido_materno, full_name')
+            .select('nombre, apellido_paterno, apellido_materno')
             .eq('id', user.id)
-            .single();
+            .maybeSingle();
 
           if (profile) {
-            if (profile.full_name) {
-              setDisplayName(profile.full_name.toUpperCase());
-              return;
-            }
-            
-            // Unir Nombre + Apellido Paterno + Apellido Materno
+            // Unir Nombre + Apellido Paterno + Apellido Materno de forma limpia
             const nameParts = [
               profile.nombre, 
               profile.apellido_paterno, 
@@ -47,8 +41,8 @@ export default function DashboardHeader({ userName, activeUser, onOcrOpen }) {
             }
           }
 
-          // 2. Si no está en la tabla, revisar user_metadata (evitando mostrar el correo feo)
-          const metaName = user.user_metadata?.full_name || user.user_metadata?.nombre;
+          // 2. Si no está en la tabla, revisar user_metadata
+          const metaName = user.user_metadata?.nombre;
           if (metaName) {
             setDisplayName(metaName.toUpperCase());
             return;
@@ -58,7 +52,7 @@ export default function DashboardHeader({ userName, activeUser, onOcrOpen }) {
           setDisplayName('LUIS RICARDO'); 
 
         } else {
-          const stored = localStorage.getItem('activeUser') || localStorage.getItem('userName');
+          const stored = localStorage.getItem('activeUser') || localStorage.getItem('user_name');
           if (stored) setDisplayName(stored.toUpperCase());
         }
       } catch (e) {
@@ -68,7 +62,7 @@ export default function DashboardHeader({ userName, activeUser, onOcrOpen }) {
     };
 
     fetchUserProfile();
-  }, [userName, activeUser]);
+  }, [user_name, activeUser]);
 
   const seconds = time.getSeconds();
   const minutes = time.getMinutes();

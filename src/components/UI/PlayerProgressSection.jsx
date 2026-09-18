@@ -19,10 +19,10 @@ export default function PlayerProgressSection({ activePlayers, activeUser, isSam
           <p className="text-xs font-bold text-center text-stone-500 uppercase">Cargando avance de los jugadores...</p>
         ) : (
           activePlayers.map((user, idx) => (
-            <div key={user.username} className="space-y-1">
+            <div key={user.user_name} className="space-y-1">
               <div className="flex justify-between items-center text-xs font-black uppercase">
                 <span>
-                  {idx === 0 ? '👑' : '⭐'} {idx + 1}. {user.username} {user.username === activeUser && '(TÚ)'}
+                  {idx === 0 ? '👑' : '⭐'} {idx + 1}. {user.user_name} {user.user_name === activeUser && '(TÚ)'}
                 </span>
                 <span className={user.balance >= 0 ? 'text-emerald-600' : 'text-red-600'}>
                   {formatearMoneda(user.balance)} {user.balance >= 0 ? 'DISPONIBLE' : 'DEUDA'}
@@ -35,7 +35,7 @@ export default function PlayerProgressSection({ activePlayers, activeUser, isSam
                   }} 
                   className={`h-full border-r-2 border-black transition-all duration-500 ${
                     user.balance >= 0 
-                      ? user.username === activeUser ? 'bg-amber-400' : 'bg-sky-400'
+                      ? user.user_name === activeUser ? 'bg-amber-400' : 'bg-sky-400'
                       : 'bg-rose-400'
                   }`} 
                 />

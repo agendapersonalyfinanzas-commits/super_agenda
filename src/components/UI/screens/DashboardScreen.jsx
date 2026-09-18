@@ -23,6 +23,10 @@ import GlobalBalanceCard from '../GlobalBalanceCard.jsx';
 import PlayerProgressSection from '../PlayerProgressSection.jsx';
 import RecentTransactions from '../RecentTransactions.jsx';
 
+// Componentes de Navegación y Juegos
+import Navigation from '../Navigation.jsx';
+import GamesScreen from '../../Games/GamesScreen.jsx';
+
 // Rutas estáticas de imágenes / iconos desde la carpeta public
 const charlieMarket = '/charlie-market.png';
 const linusDulces = '/linus-dulces.png';
@@ -102,6 +106,9 @@ const INITIAL_INCOMES = [
 ];
 
 export default function DashboardScreen() {
+  // --- ESTADO DE PESTAÑA ACTIVA PARA NAVEGACIÓN INFERIOR ---
+  const [activeTab, setActiveTab] = useState('finances');
+
   // --- ESTADOS DE SEGURIDAD Y MODO DIOS ---
   const [currentUser, setCurrentUser] = useState(null);
   const [auditorMode, setAuditorMode] = useState(false);
@@ -204,21 +211,17 @@ export default function DashboardScreen() {
       setQuickButtons(cleanedActions.filter((a) => a.action_type === 'expense'));
       setQuickIncomes(cleanedActions.filter((a) => a.action_type === 'income'));
 
-      // --- FILTRO DE MODO AUDITOR ---
+      // --- FILTRO DE MODO AUDITOR (Usando user_name correctamente) ---
       let transQuery = supabase
         .from('transactions')
         .select('*')
         .order('transaction_date', { ascending: false });
       
-      // Si eres el maestro pero el switch está APAGADO, filtras solo para ti.
-      // Si no eres el maestro, filtras obligatoriamente para ti.
-      // Solo si eres maestro Y el switch está ENCENDIDO, pides toda la base de datos.
       if ((isMasterAuditor && !auditorMode) || !isMasterAuditor) {
         transQuery = transQuery.eq('user_name', activeUser);
       }
 
       const { data: trans, error: transError } = await transQuery;
-      // ------------------------------
 
       if (!transError && trans) {
         setRecentTransactions(trans);
@@ -255,9 +258,9 @@ export default function DashboardScreen() {
           balancesMap[SAMPLE_USERS[2]] = 1200;
         }
 
-        const computedPlayers = Object.keys(balancesMap).map(username => ({
-          username,
-          balance: balancesMap[username]
+        const computedPlayers = Object.keys(balancesMap).map(user_name => ({
+          user_name,
+          balance: balancesMap[user_name]
         }));
         computedPlayers.sort((a, b) => b.balance - a.balance);
         setActivePlayers(computedPlayers);
@@ -268,12 +271,10 @@ export default function DashboardScreen() {
     }
   };
 
-  // Se añade auditorMode y currentUser a las dependencias para refrescar en tiempo real
   useEffect(() => {
     fetchActionsAndTotals();
   }, [customUsers, activeUser, auditorMode, currentUser]);
 
-  // --- PERSISTENCIA DE ORDEN EN SUPABASE ---
   const saveNewOrder = async (newList) => {
     try {
       const updates = newList.map((action, i) =>
@@ -285,7 +286,6 @@ export default function DashboardScreen() {
     }
   };
 
-  // --- LÓGICA DE INTERCAMBIO (SWAP) POR SELECCIÓN DIRECTA ---
   const handleExpenseCardClick = (clickedId) => {
     if (isEditMode) return;
 
@@ -459,7 +459,6 @@ export default function DashboardScreen() {
     setActiveImageTarget(null);
   };
 
-  // --- CIERRE DE SESIÓN RADICAL (SUPABASE + LOCALSTORAGE + SESSIONSTORAGE + COOKIES) ---
   const handleSignOut = async () => {
     try {
       await supabase.auth.signOut({ scope: 'global' });
@@ -467,7 +466,6 @@ export default function DashboardScreen() {
       console.error('Error al cerrar sesión en servidor:', err);
     }
 
-    // 1. Limpiar localStorage de cualquier rastro de supabase o tokens
     try {
       const keysToRemove = [];
       for (let i = 0; i < localStorage.length; i++) {
@@ -479,12 +477,10 @@ export default function DashboardScreen() {
       keysToRemove.forEach(k => localStorage.removeItem(k));
     } catch (e) {}
 
-    // 2. Limpiar sessionStorage por completo
     try {
       sessionStorage.clear();
     } catch (e) {}
 
-    // 3. Destruir todas las cookies del navegador (por si Supabase guarda la sesión en cookies)
     try {
       const cookies = document.cookie.split(';');
       for (let i = 0; i < cookies.length; i++) {
@@ -496,140 +492,149 @@ export default function DashboardScreen() {
       }
     } catch (e) {}
 
-    // 4. Forzar recarga absoluta de la aplicación
     window.location.href = window.location.origin;
   };
 
-  const availableUsersList = Array.from(new Set([activeUser, ...customUsers, ...activePlayers.map(p => p.username)]));
+  const availableUsersList = Array.from(new Set([activeUser, ...customUsers, ...activePlayers.map(p => p.user_name)]));
 
   return (
-    <div className="min-h-screen bg-[#Fef8e7] p-4 md:p-8 font-mono text-black pb-24 select-none relative">
-      <div className="max-w-4xl mx-auto space-y-8">
-        
-        {/* NUEVA BARRA SUPERIOR CON MODO DIOS Y BOTÓN SALIR */}
-        <div className="flex justify-between items-center mb-2">
+    <div className="min-h-screen bg-[#Fef8e7] p-4 md:p-8 font-mono text-black pb-28 select-none relative">
+      
+      {/* RENDERIZADO CONDICIONAL SEGÚN LA PESTAÑA ACTIVA EN LA BARRA INFERIOR */}
+      {activeTab === 'games' ? (
+        <GamesScreen activeUser={activeUser} />
+      ) : activeTab === 'agenda' ? (
+        <div className="max-w-4xl mx-auto p-8 text-center font-black text-lg">📅 Pantalla de Agenda</div>
+      ) : activeTab === 'metrics' ? (
+        <div className="max-w-4xl mx-auto p-8 text-center font-black text-lg">📊 Pantalla de Métricas</div>
+      ) : (
+        <div className="max-w-4xl mx-auto space-y-8">
           
-          {/* El interruptor invisible para usuarios normales */}
-          {isMasterAuditor ? (
-            <div className={`flex items-center gap-3 px-4 py-2 rounded-xl border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-colors duration-300 ${auditorMode ? 'bg-red-500' : 'bg-stone-900'}`}>
-              <span className={`text-[10px] font-black uppercase tracking-widest ${auditorMode ? 'text-white' : 'text-amber-400'}`}>
-                {auditorMode ? '🔴 DIOS' : '🕵️‍♂️ NORMAL'}
-              </span>
-              <button
-                onClick={() => setAuditorMode(!auditorMode)}
-                className={`relative w-12 h-6 border-2 border-black rounded-full cursor-pointer transition-colors ${auditorMode ? 'bg-amber-300' : 'bg-stone-600'}`}
-              >
-                <div className={`w-4 h-4 bg-white border-2 border-black rounded-full absolute top-0.5 transition-transform duration-300 ${auditorMode ? 'translate-x-5.5' : 'translate-x-1'}`} />
-              </button>
+          {/* NUEVA BARRA SUPERIOR CON MODO DIOS Y BOTÓN SALIR */}
+          <div className="flex justify-between items-center mb-2">
+            {isMasterAuditor ? (
+              <div className={`flex items-center gap-3 px-4 py-2 rounded-xl border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-colors duration-300 ${auditorMode ? 'bg-red-500' : 'bg-stone-900'}`}>
+                <span className={`text-[10px] font-black uppercase tracking-widest ${auditorMode ? 'text-white' : 'text-amber-400'}`}>
+                  {auditorMode ? '🔴 DIOS' : '🕵️‍♂️ NORMAL'}
+                </span>
+                <button
+                  onClick={() => setAuditorMode(!auditorMode)}
+                  className={`relative w-12 h-6 border-2 border-black rounded-full cursor-pointer transition-colors ${auditorMode ? 'bg-amber-300' : 'bg-stone-600'}`}
+                >
+                  <div className={`w-4 h-4 bg-white border-2 border-black rounded-full absolute top-0.5 transition-transform duration-300 ${auditorMode ? 'translate-x-5.5' : 'translate-x-1'}`} />
+                </button>
+              </div>
+            ) : (
+              <div />
+            )}
+
+            <button
+              type="button"
+              onClick={handleSignOut}
+              className="px-4 py-2 bg-rose-500 hover:bg-rose-600 text-white border-4 border-black rounded-xl font-black text-xs uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+            >
+              🚪 Cerrar Sesión
+            </button>
+          </div>
+
+          {auditorMode && (
+            <div className="bg-red-500 text-white border-4 border-black p-3 rounded-xl text-center font-black text-xs uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] animate-pulse tracking-wide mb-4">
+              ⚠️ Precaución
             </div>
-          ) : (
-            <div /> /* Espaciador para mantener a la derecha el botón de cerrar sesión */
           )}
 
-          <button
-            type="button"
-            onClick={handleSignOut}
-            className="px-4 py-2 bg-rose-500 hover:bg-rose-600 text-white border-4 border-black rounded-xl font-black text-xs uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
-          >
-            🚪 Cerrar Sesión
-          </button>
-        </div>
-
-        {/* ALERTA VISUAL OPCIONAL DE MODO DIOS */}
-        {auditorMode && (
-          <div className="bg-red-500 text-white border-4 border-black p-3 rounded-xl text-center font-black text-xs uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] animate-pulse tracking-wide mb-4">
-            ⚠️ Precaución
-          </div>
-        )}
-
-        {/* CABECERA */}
-        <DashboardHeader onOcrOpen={() => setIsOcrOpen(true)} />
-        
-        {/* PANEL DE CONTROL DE JUGADOR */}
-        <PlayerControlPanel 
-          activeUser={activeUser}
-          setActiveUser={setActiveUser}
-          availableUsersList={availableUsersList}
-          isEditMode={isEditMode}
-          setIsEditMode={setIsEditMode}
-          setSelectedExpenseId={setSelectedExpenseId}
-          showAddPlayerRow={showAddPlayerRow}
-          setShowAddPlayerRow={setShowAddPlayerRow}
-          newPlayerName={newPlayerName}
-          setNewPlayerName={setNewPlayerName}
-          onAddPlayer={handleAddNewPlayer}
-        />
-
-        <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* CABECERA */}
+          <DashboardHeader onOcrOpen={() => setIsOcrOpen(true)} />
           
-          {/* BALANCE NETO GLOBAL CON SOPORTE PDF */}
-          <GlobalBalanceCard 
-            totalIncome={totalIncome}
-            weeklyTotal={weeklyTotal}
-            bgImage={lucyAnalytics}
-            transactions={recentTransactions}
+          {/* PANEL DE CONTROL DE JUGADOR */}
+          <PlayerControlPanel 
+            activeUser={activeUser}
+            setActiveUser={setActiveUser}
+            availableUsersList={availableUsersList}
+            isEditMode={isEditMode}
+            setIsEditMode={setIsEditMode}
+            setSelectedExpenseId={setSelectedExpenseId}
+            showAddPlayerRow={showAddPlayerRow}
+            setShowAddPlayerRow={setShowAddPlayerRow}
+            newPlayerName={newPlayerName}
+            setNewPlayerName={setNewPlayerName}
+            onAddPlayer={handleAddNewPlayer}
           />
 
-          <div className="md:col-span-2 space-y-6">
+          <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
             
-            {/* BOTONERA GASTOS CON SOPORTE PDF FILTRADO */}
-            <QuickActionGrid 
-              title="💸 Registrar Egresos"
-              subtitle="Toca un botón para mover • O toca para registrar"
-              actions={quickButtons}
-              selectedId={selectedExpenseId}
-              onSelect={handleExpenseCardClick}
-              onSave={handleSaveExpense}
-              isEditMode={isEditMode}
-              onEditImage={setActiveImageTarget}
-              onDelete={handleDeleteButton}
-              onAddCustom={() => { setModalType('expense'); setIsAddCustomOpen(true); }}
-              onCancelSelection={() => setSelectedExpenseId(null)}
-              onExportPDF={() => exportTransactionsToPDF(recentTransactions.filter(t => t.transaction_type === 'expense'))}
-              bgColor="bg-rose-500/15"
-              titleColor="text-rose-950"
-              subtitleColor="text-rose-800"
-              isExpense={true}
-            />
-
-            {/* BOTONERA INGRESOS CON SOPORTE PDF FILTRADO */}
-            <QuickActionGrid 
-              title="💰 Registrar Ingresos"
-              subtitle={`Guarda tus entradas de dinero como ${activeUser}`}
-              actions={quickIncomes}
-              onSave={handleSaveIncome}
-              isEditMode={isEditMode}
-              onEditImage={setActiveImageTarget}
-              onDelete={handleDeleteButton}
-              onAddCustom={() => { setModalType('income'); setIsAddCustomOpen(true); }}
-              onExportPDF={() => exportTransactionsToPDF(recentTransactions.filter(t => t.transaction_type === 'income'))}
-              bgColor="bg-emerald-500/15"
-              titleColor="text-emerald-950"
-              subtitleColor="text-emerald-800"
-              isExpense={false}
-            />
-
-            {/* HISTORIAL RÁPIDO DIRECTO A SUPABASE (ÚLTIMOS MOVIMIENTOS) */}
-            <RecentTransactions 
+            {/* BALANCE NETO GLOBAL CON SOPORTE PDF */}
+            <GlobalBalanceCard 
+              totalIncome={totalIncome}
+              weeklyTotal={weeklyTotal}
+              bgImage={lucyAnalytics}
               transactions={recentTransactions}
-              onDelete={handleDeleteTransaction}
-              onUpdate={handleUpdateTransactionAmount}
             />
 
-          </div>
-        </section>
+            <div className="md:col-span-2 space-y-6">
+              
+              {/* BOTONERA GASTOS CON SOPORTE PDF FILTRADO */}
+              <QuickActionGrid 
+                title="💸 Registrar Egresos"
+                subtitle="Toca un botón para mover • O toca para registrar"
+                actions={quickButtons}
+                selectedId={selectedExpenseId}
+                onSelect={handleExpenseCardClick}
+                onSave={handleSaveExpense}
+                isEditMode={isEditMode}
+                onEditImage={setActiveImageTarget}
+                onDelete={handleDeleteButton}
+                onAddCustom={() => { setModalType('expense'); setIsAddCustomOpen(true); }}
+                onCancelSelection={() => setSelectedExpenseId(null)}
+                onExportPDF={() => exportTransactionsToPDF(recentTransactions.filter(t => t.transaction_type === 'expense'))}
+                bgColor="bg-rose-500/15"
+                titleColor="text-rose-950"
+                subtitleColor="text-rose-800"
+                isExpense={true}
+              />
 
-        {/* TABLERO GAMIFICADO */}
-        <PlayerProgressSection 
-          activePlayers={activePlayers}
-          activeUser={activeUser}
-          isSampleData={isSampleData}
-        />
-      </div>
+              {/* BOTONERA INGRESOS CON SOPORTE PDF FILTRADO */}
+              <QuickActionGrid 
+                title="💰 Registrar Ingresos"
+                subtitle={`Guarda tus entradas de dinero como ${activeUser}`}
+                actions={quickIncomes}
+                onSave={handleSaveIncome}
+                isEditMode={isEditMode}
+                onEditImage={setActiveImageTarget}
+                onDelete={handleDeleteButton}
+                onAddCustom={() => { setModalType('income'); setIsAddCustomOpen(true); }}
+                onExportPDF={() => exportTransactionsToPDF(recentTransactions.filter(t => t.transaction_type === 'income'))}
+                bgColor="bg-emerald-500/15"
+                titleColor="text-emerald-950"
+                subtitleColor="text-emerald-800"
+                isExpense={false}
+              />
+
+              {/* HISTORIAL RÁPIDO DIRECTO A SUPABASE */}
+              <RecentTransactions 
+                transactions={recentTransactions}
+                onDelete={handleDeleteTransaction}
+                onUpdate={handleUpdateTransactionAmount}
+              />
+
+            </div>
+          </section>
+
+          {/* TABLERO GAMIFICADO */}
+          <PlayerProgressSection 
+            activePlayers={activePlayers}
+            activeUser={activeUser}
+            isSampleData={isSampleData}
+          />
+        </div>
+      )}
+
+      {/* BARRA DE NAVEGACIÓN INFERIOR FIJA */}
+      <Navigation activeTab={activeTab} setActiveTab={setActiveTab} />
 
       {/* TOAST FLOTANTE DE DESHACER (INMEDIATO 5 SEGUNDOS) */}
       {lastSavedTx && (
-        <div className="fixed bottom-6 right-6 z-50 bg-black text-white border-4 border-amber-400 p-4 rounded-3xl shadow-[8px_8px_0px_0px_rgba(251,191,36,1)] flex items-center gap-4 animate-in slide-in-from-bottom-5 font-mono">
+        <div className="fixed bottom-24 right-6 z-50 bg-black text-white border-4 border-amber-400 p-4 rounded-3xl shadow-[8px_8px_0px_0px_rgba(251,191,36,1)] flex items-center gap-4 animate-in slide-in-from-bottom-5 font-mono">
           <div>
             <p className="text-xs font-black uppercase text-amber-300">✨ Movimiento Registrado</p>
             <p className="text-[11px] text-stone-300">{lastSavedTx.concept}: {formatearMoneda(lastSavedTx.amount)}</p>

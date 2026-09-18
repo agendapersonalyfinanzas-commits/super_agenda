@@ -5,10 +5,8 @@ import { supabase } from './supabaseClient';
 import DashboardScreen from './components/UI/screens/DashboardScreen.jsx';
 import CalendarScreen from './components/UI/screens/CalendarScreen.jsx';
 import AnalyticsScreen from './components/UI/screens/AnalyticsScreen.jsx';
+import GameScreen from './components/Games/GamesScreen.jsx'; // 👈 1. Importamos la pantalla de juegos
 import Navigation from './components/UI/Navigation.jsx';
-
-// Si tu utilidad mayusculas.js tiene reglas especiales (ej. quitar acentos), puedes importarla así:
-// import { tuFuncionMayusculas } from './utils/mayusculas.js';
 
 // Imagen estática desde la carpeta public
 const superSnoopy = '/super-snoopy.png';
@@ -16,14 +14,15 @@ const superSnoopy = '/super-snoopy.png';
 export default function App() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [userName, setUserName] = useState(''); // Nombre personalizado para la app
-  const [activeTab, setActiveTab] = useState('finances'); // 'finances' | 'agenda' | 'metrics'
+  const [user_name, setuser_name] = useState(''); 
+  const [activeTab, setActiveTab] = useState('finances'); // 'finances' | 'agenda' | 'metrics' | 'games'
+  const [selectedGame, setSelectedGame] = useState(null); // 👈 Controla qué juego específico se abre dentro de GamesScreen
 
   // Estados para el formulario de Autenticación
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   
-  // Nuevos estados para Nombre y Apellidos en el Registro
+  // Estados para Nombre y Apellidos en el Registro
   const [firstName, setFirstName] = useState('');
   const [paternalSurname, setPaternalSurname] = useState('');
   const [maternalSurname, setMaternalSurname] = useState('');
@@ -32,18 +31,15 @@ export default function App() {
   const [successMessage, setSuccessMessage] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  // Estado para alternar entre Login y Registro
   const [isRegistering, setIsRegistering] = useState(false);
 
   useEffect(() => {
-    // 1. Obtener la sesión inicial al cargar la app
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session) fetchUserProfile(session.user.id);
       setLoading(false);
     });
 
-    // 2. Escuchar cambios de sesión en tiempo real (login / logout)
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -51,7 +47,7 @@ export default function App() {
       if (session) {
         fetchUserProfile(session.user.id);
       } else {
-        setUserName('');
+        setuser_name('');
       }
       setLoading(false);
     });
@@ -59,22 +55,21 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Función para obtener el nombre real desde la tabla segura de perfiles
   const fetchUserProfile = async (userId) => {
     const { data, error } = await supabase
       .from('profiles')
-      .select('first_name, paternal_surname')
+      .select('nombre, apellido_paterno, apellido_materno')
       .eq('id', userId)
-      .single();
+      .maybeSingle();
 
     if (data) {
-      setUserName(`${data.first_name} ${data.paternal_surname}`);
+      const fullName = `${data.nombre || ''} ${data.apellido_paterno || ''} ${data.apellido_materno || ''}`.trim();
+      setuser_name(fullName);
     } else if (error) {
       console.error('Error al cargar perfil:', error.message);
     }
   };
 
-  // Función unificada para Login o Registro
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -82,15 +77,14 @@ export default function App() {
     setSuccessMessage(null);
 
     if (isRegistering) {
-      // REGISTRO EN SUPABASE CON METADATOS ADICIONALES (YA EN MAYÚSCULAS)
       const { error } = await supabase.auth.signUp({
         email,
         password,
         options: {
           data: {
-            first_name: firstName,
-            paternal_surname: paternalSurname,
-            maternal_surname: maternalSurname,
+            nombre: firstName,
+            apellido_paterno: paternalSurname,
+            apellido_materno: maternalSurname,
           },
         },
       });
@@ -99,10 +93,9 @@ export default function App() {
         setAuthError(error.message);
       } else {
         setSuccessMessage('¡Cuenta creada con éxito! Ya puedes iniciar sesión.');
-        setIsRegistering(false); // Cambiar automáticamente a modo login
+        setIsRegistering(false);
       }
     } else {
-      // INICIO DE SESIÓN EN SUPABASE
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -116,7 +109,6 @@ export default function App() {
     setIsSubmitting(false);
   };
 
-  // Pantalla de carga inicial
   if (loading) {
     return (
       <div className="min-h-screen bg-[#Fef8e7] flex items-center justify-center font-mono text-black">
@@ -128,19 +120,12 @@ export default function App() {
     );
   }
 
-  // SI NO HAY SESIÓN: Mostrar Pantalla de Login / Registro
   if (!session) {
     return (
       <div className="min-h-screen bg-[#Fef8e7] flex items-center justify-center p-4 font-mono text-black selection:bg-amber-300">
         <div className="max-w-md w-full bg-white border-4 border-black rounded-3xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] overflow-hidden">
-          
-          {/* BANNER DE SUPER SNOOPY */}
           <div className="bg-[#Fef8e7] border-b-4 border-black w-full overflow-hidden flex">
-            <img 
-              src={superSnoopy} 
-              alt="Super Snoopy" 
-              className="w-full h-64 object-fill block" 
-            />
+            <img src={superSnoopy} alt="Super Snoopy" className="w-full h-64 object-fill block" />
           </div>
 
           <div className="p-8 space-y-6">
@@ -166,8 +151,6 @@ export default function App() {
             )}
 
             <form onSubmit={handleSubmit} className="space-y-4">
-              
-              {/* CAMPOS ADICIONALES SOLO PARA EL REGISTRO CON UPPERCASE FORZADO */}
               {isRegistering && (
                 <>
                   <div>
@@ -189,7 +172,7 @@ export default function App() {
                       required
                       value={paternalSurname}
                       onChange={(e) => setPaternalSurname(e.target.value.toUpperCase())}
-                      placeholder="EJ. PÉREZ"
+                      placeholder="EJ. VILLALOBOS"
                       className="w-full bg-[#Fef8e7] border-3 border-black p-3 rounded-xl text-sm font-bold uppercase focus:outline-none focus:ring-2 focus:ring-amber-400"
                     />
                   </div>
@@ -200,7 +183,7 @@ export default function App() {
                       type="text"
                       value={maternalSurname}
                       onChange={(e) => setMaternalSurname(e.target.value.toUpperCase())}
-                      placeholder="EJ. LÓPEZ"
+                      placeholder="EJ. FORTUN"
                       className="w-full bg-[#Fef8e7] border-3 border-black p-3 rounded-xl text-sm font-bold uppercase focus:outline-none focus:ring-2 focus:ring-amber-400"
                     />
                   </div>
@@ -240,7 +223,6 @@ export default function App() {
               </button>
             </form>
 
-            {/* Botón para alternar entre Crear Cuenta e Iniciar Sesión */}
             <div className="text-center pt-2 border-t-2 border-stone-200">
               <button
                 type="button"
@@ -255,31 +237,38 @@ export default function App() {
               </button>
             </div>
           </div>
-
         </div>
       </div>
     );
   }
 
-  // SI HAY SESIÓN: Mostrar el Dashboard con su Navegación normal y el nombre real del usuario en Mayúsculas
   return (
     <div className="min-h-screen bg-[#Fef8e7] font-mono selection:bg-amber-300 relative pb-28">
       
-      {/* EJEMPLO DE USO DEL NOMBRE EN TU APP (Garantizado que estará en Mayúsculas) */}
       <header className="bg-white border-b-4 border-black p-4 flex justify-between items-center px-6">
         <div className="text-xs font-black uppercase tracking-wider">
-          ⭐ ¡BIENVENIDO, <span className="text-amber-600 underline">{userName || 'SUPER USUARIO'}</span>!
+          ⭐ ¡BIENVENIDO, <span className="text-amber-600 underline">{user_name || 'SUPER USUARIO'}</span>!
         </div>
       </header>
 
-      {/* RENDERIZADO DE LAS PANTALLAS SEGÚN LA PESTAÑA ACTIVA */}
-      <main>
+      {/* RENDERIZADO DE LAS PANTALLAS (INCLUYENDO JUEGOS) */}
+      <main className="p-4">
         {activeTab === 'finances' && <DashboardScreen />}
         {activeTab === 'agenda' && <CalendarScreen />}
         {activeTab === 'metrics' && <AnalyticsScreen />}
+        {activeTab === 'games' && (
+          <GameScreen 
+            activeUser={user_name || 'Snoopy'}
+            selectedGame={selectedGame}
+            setSelectedGame={setSelectedGame}
+            onBack={() => {
+              setSelectedGame(null);
+              setActiveTab('finances'); // Regresa a finanzas al salir de juegos
+            }}
+          />
+        )}
       </main>
 
-      {/* BARRA DE NAVEGACIÓN INFERIOR */}
       <Navigation activeTab={activeTab} setActiveTab={setActiveTab} />
       
     </div>
