@@ -39,7 +39,6 @@ export function useQuickActionsManager() {
 
       const userId = session.user.id;
 
-      // Usamos la tabla correcta 'expenses' según tu esquema
       const { data: dbActions, error } = await supabase
         .from('expenses')
         .select('*')
@@ -87,7 +86,7 @@ export function useQuickActionsManager() {
     }
   };
 
-  // 🔥 GUARDAR / EDITAR SIN DUPLICAR
+  // 🔥 GUARDAR / EDITAR SIN DUPLICAR (Corregido para enviar solo columnas válidas a Supabase)
   const handleAddAction = async (newActionData, typeArg = 'expense', isEditing = false) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -109,7 +108,6 @@ export function useQuickActionsManager() {
         user_id: user?.id || null
       };
 
-      // Función que actualiza si existe el ID o agrega si es un botón nuevo
       const updateOrAppend = (prev) => {
         const exists = prev.some(item => item.id === actionPayload.id);
         if (exists || isEditing) {
@@ -132,14 +130,12 @@ export function useQuickActionsManager() {
         });
       }
 
-      // Si hay usuario, actualiza/inserta en Supabase tabla 'expenses'
+      // Si hay usuario, se envía únicamente el esquema válido a la tabla 'expenses'
       if (user) {
         await supabase.from('expenses').upsert([{
           id: actionPayload.id,
-          name: actionPayload.name,
           category: actionPayload.category,
           amount: actionPayload.amount,
-          icon: actionPayload.icon,
           type: actionPayload.type,
           user_id: user.id
         }], { onConflict: 'id' });
@@ -189,7 +185,13 @@ export function useQuickActionsManager() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user && id) {
-        await supabase.from('expenses').update(updates).eq('id', id);
+        // Filtramos para enviar solo datos actualizables válidos
+        const safeUpdates = {};
+        if (updates.category) safeUpdates.category = updates.category;
+        if (updates.amount !== undefined) safeUpdates.amount = updates.amount;
+        if (Object.keys(safeUpdates).length > 0) {
+          await supabase.from('expenses').update(safeUpdates).eq('id', id);
+        }
       }
     } catch (err) {
       console.error('Error al actualizar personalización:', err);
