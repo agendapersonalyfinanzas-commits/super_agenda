@@ -65,7 +65,7 @@ export default function QuickActionGrid(props) {
   const [transAmount, setTransAmount] = useState('');
   const [transConcept, setTransConcept] = useState('');
 
-  // 🎯 LÓGICA DE DRAG & DROP BASADA EN ÍNDICES
+  // 🎯 LÓGICA DE DRAG & DROP ACTIVA SIEMPRE
   const [draggedIndex, setDraggedIndex] = useState(null);
 
   const handleDragStart = (e, index) => {
@@ -187,14 +187,7 @@ export default function QuickActionGrid(props) {
       <div className="flex items-center justify-between mb-4 border-b-4 border-black pb-2">
         <h3 className="font-black text-xl uppercase text-black tracking-wide">{title}</h3>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleAddClick}
-            className="px-3 py-2 text-xs font-black rounded-xl border-4 border-black uppercase bg-amber-400 text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all cursor-pointer hover:bg-amber-300"
-          >
-            + AÑADIR
-          </button>
-          
+          {/* Se eliminó el botón superior + AÑADIR para evitar duplicidad y saturar la pantalla */}
           <button
             type="button"
             onClick={() => setIsEditMode(!isEditMode)}
