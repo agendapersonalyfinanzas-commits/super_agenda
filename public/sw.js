@@ -41,6 +41,31 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
+// 🔔 NUEVO: Manejo de notificaciones push en segundo plano con app cerrada
+self.addEventListener('push', (event) => {
+  let data = { title: 'Super Agenda', body: 'Tienes un pendiente programado.' };
+  
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch (e) {
+      data.body = event.data.text();
+    }
+  }
+
+  const options = {
+    body: data.body,
+    icon: '/super-snoopy.png',
+    badge: '/super-snoopy.png',
+    vibrate: [200, 100, 200],
+    data: { url: data.url || '/' }
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(data.title, options)
+  );
+});
+
 // Manejo de clic en las notificaciones para abrir o dar foco a la app
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();

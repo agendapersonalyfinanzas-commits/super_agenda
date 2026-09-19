@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { aMayusculas } from '../utils/mayusculas.js';
 
-export default function CalendarGrid({ onSelectDay }) {
+export default function CalendarGrid({ onSelectDay, dayTasks = {} }) {
   const [currentDate, setCurrentDate] = useState(new Date());
 
   const year = currentDate.getFullYear();
@@ -10,7 +10,6 @@ export default function CalendarGrid({ onSelectDay }) {
   const firstDayIndex = new Date(year, month, 1).getDay();
   const totalDays = new Date(year, month + 1, 0).getDate();
 
-  // Fecha de hoy estandarizada a las 00:00:00 para comparación exacta de días
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -27,6 +26,20 @@ export default function CalendarGrid({ onSelectDay }) {
 
   const handleNextMonth = () => {
     setCurrentDate(new Date(year, month + 1, 1));
+  };
+
+  // Función para determinar el estilo del semáforo según la proximidad del evento
+  const getTaskSemaphoreStyle = (dateStr) => {
+    const [day, monthNum, yearNum] = dateStr.split('/');
+    const taskDate = new Date(yearNum, monthNum - 1, day);
+    taskDate.setHours(0, 0, 0, 0);
+
+    const diffTime = taskDate.getTime() - today.getTime();
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) return 'bg-rose-500 text-white animate-pulse'; // 🔴 Hoy (Rojo urgente parpadeante)
+    if (diffDays <= 2) return 'bg-amber-300 text-black'; // 🟡 Cerca (1 o 2 días)
+    return 'bg-emerald-400 text-black'; // 🟢 Lejos (3 días o más)
   };
 
   return (
@@ -67,7 +80,7 @@ export default function CalendarGrid({ onSelectDay }) {
       {/* Cuadrícula de días */}
       <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
         {Array.from({ length: firstDayIndex }).map((_, index) => (
-          <div key={`empty-${index}`} className="h-12 sm:h-14 bg-stone-100 border-2 border-dashed border-stone-300 rounded-xl opacity-40" />
+          <div key={`empty-${index}`} className="h-16 sm:h-20 bg-stone-100 border-2 border-dashed border-stone-300 rounded-xl opacity-40" />
         ))}
 
         {Array.from({ length: totalDays }).map((_, index) => {
@@ -80,25 +93,42 @@ export default function CalendarGrid({ onSelectDay }) {
           const isToday = cellDate.getTime() === today.getTime();
           const isPast = cellDate.getTime() < today.getTime();
 
+          const tasksForDay = dayTasks[formattedDate] || [];
+          const hasTasks = tasksForDay.length > 0;
+          const firstTask = hasTasks ? tasksForDay[0] : null;
+          const semaphoreStyle = hasTasks ? getTaskSemaphoreStyle(formattedDate) : '';
+
           return (
             <button
               key={dayNum}
               type="button"
               disabled={isPast}
               onClick={() => !isPast && onSelectDay && onSelectDay(formattedDate)}
-              className={`h-12 sm:h-14 border-2 rounded-xl font-black text-xs sm:text-sm flex flex-col items-center justify-center transition-all ${
+              className={`h-16 sm:h-20 border-2 rounded-xl font-black text-xs flex flex-col items-center justify-between p-1 relative transition-all ${
                 isPast
                   ? 'bg-stone-200 text-stone-400 border-stone-300 opacity-50 cursor-not-allowed shadow-none'
                   : isToday
-                  ? 'bg-rose-400 text-black border-3 border-black scale-105 cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none'
+                  ? 'bg-sky-400 text-black border-3 border-black scale-105 cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none' // 🔵 Azul para HOY
                   : 'bg-amber-50 hover:bg-amber-300 border-black cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none'
               }`}
             >
-              <span>{dayNum}</span>
-              {isToday && (
-                <span className="text-[8px] sm:text-[9px] bg-black text-white font-black px-1 rounded-sm mt-0.5 uppercase tracking-wider">
-                  HOY
-                </span>
+              {/* Número del día */}
+              <div className="w-full flex justify-between items-center px-1">
+                <span className="text-xs sm:text-sm font-black">{dayNum}</span>
+                {isToday && (
+                  <span className="text-[7px] sm:text-[8px] bg-black text-white font-black px-1 rounded-sm uppercase tracking-wider">
+                    HOY
+                  </span>
+                )}
+              </div>
+
+              {/* Mini-etiqueta con la hora y actividad si existe */}
+              {hasTasks ? (
+                <div className={`w-full text-[9px] sm:text-[10px] font-black rounded px-1 py-0.5 truncate border border-black ${semaphoreStyle}`}>
+                  {firstTask.time} {firstTask.text}
+                </div>
+              ) : (
+                <div className="h-3" />
               )}
             </button>
           );

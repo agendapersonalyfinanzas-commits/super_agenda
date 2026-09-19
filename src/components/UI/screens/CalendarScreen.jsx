@@ -17,6 +17,10 @@ export default function CalendarScreen() {
   const [isVoiceOpen, setIsVoiceOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
   const [newTaskText, setNewTaskText] = useState('');
+  const [newTaskTime, setNewTaskTime] = useState('09:00');
+  
+  // Estado para el aviso visual de guardado con éxito
+  const [successMessage, setSuccessMessage] = useState('');
 
   // Persistencia de notas rápidas y tareas por fecha
   const [savedNotes, setSavedNotes] = useState(() => 
@@ -26,6 +30,52 @@ export default function CalendarScreen() {
     obtenerDeStorage(TASKS_STORAGE_KEY, {})
   );
 
+  // Solicitar permisos de notificación nativos
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().then((permission) => {
+        if (permission === 'granted') {
+          console.log('Permiso de notificaciones concedido.');
+        }
+      });
+    }
+  }, []);
+
+  // Programar alarmas para las actividades
+  useEffect(() => {
+    const timers = [];
+    const now = new Date();
+
+    Object.entries(dayTasks).forEach(([dateStr, tasks]) => {
+      tasks.forEach((task) => {
+        if (!task.time) return;
+
+        const [day, month, year] = dateStr.split('/');
+        const [hours, minutes] = task.time.split(':');
+        const taskDate = new Date(year, month - 1, day, hours, minutes, 0);
+
+        const timeToTask = taskDate.getTime() - now.getTime();
+
+        if (timeToTask > 0) {
+          const timer = setTimeout(() => {
+            if (Notification.permission === 'granted') {
+              new Notification('🔔 Actividad Próxima', {
+                body: `${task.time} - ${task.text}`,
+                icon: '/super-snoopy.png'
+              });
+            } else {
+              alert(`🔔 Actividad [${task.time}]: ${task.text}`);
+            }
+          }, timeToTask);
+
+          timers.push(timer);
+        }
+      });
+    });
+
+    return () => timers.forEach(t => clearTimeout(t));
+  }, [dayTasks]);
+
   useEffect(() => {
     guardarEnStorage(NOTES_STORAGE_KEY, savedNotes);
   }, [savedNotes]);
@@ -34,7 +84,6 @@ export default function CalendarScreen() {
     guardarEnStorage(TASKS_STORAGE_KEY, dayTasks);
   }, [dayTasks]);
 
-  // Manejador para guardar lienzo manuscrito
   const handleSaveNote = (base64Data) => {
     try {
       const newNote = { 
@@ -44,12 +93,12 @@ export default function CalendarScreen() {
       };
       setSavedNotes(prev => [newNote, ...prev]);
       setIsCanvasOpen(false);
+      triggerSuccess('Nota guardada con éxito');
     } catch (err) {
       console.error('Error al guardar nota:', obtenerMensajeError(err));
     }
   };
 
-  // Manejador para recibir voz: asigna al campo "Nueva tarea" si el modal del día está abierto
   const handleSaveVoiceNote = (textoDictado) => {
     try {
       if (selectedDate) {
@@ -61,6 +110,7 @@ export default function CalendarScreen() {
           date: formatearFechaCorta(new Date()) 
         };
         setSavedNotes(prev => [newNote, ...prev]);
+        triggerSuccess('Nota de voz guardada');
       }
       setIsVoiceOpen(false);
     } catch (err) {
@@ -68,28 +118,53 @@ export default function CalendarScreen() {
     }
   };
 
-  // Agregar nueva tarea a la fecha seleccionada
+  // Disparador de alerta visual temporal de éxito
+  const triggerSuccess = (msg) => {
+    setSuccessMessage(msg);
+    setTimeout(() => {
+      setSuccessMessage('');
+    }, 3000);
+  };
+
   const handleAddTask = () => {
     if (!newTaskText.trim() || !selectedDate) return;
     const currentList = dayTasks[selectedDate] || [];
-    const updatedList = [...currentList, { id: Date.now(), text: newTaskText.trim() }];
+    
+    const newTask = { 
+      id: Date.now(), 
+      text: newTaskText.trim(), 
+      time: newTaskTime || '00:00' 
+    };
+
+    const updatedList = [...currentList, newTask].sort((a, b) => a.time.localeCompare(b.time));
     
     setDayTasks({ ...dayTasks, [selectedDate]: updatedList });
     setNewTaskText('');
+    triggerSuccess('¡Actividad guardada con éxito!');
   };
 
   const handleDeleteTask = (taskId) => {
     if (!selectedDate) return;
     const updatedList = (dayTasks[selectedDate] || []).filter(t => t.id !== taskId);
     setDayTasks({ ...dayTasks, [selectedDate]: updatedList });
+    triggerSuccess('Actividad eliminada');
   };
 
   const handleDeleteNote = (id) => {
     setSavedNotes(prev => prev.filter(n => n.id !== id));
+    triggerSuccess('Nota eliminada');
   };
 
   return (
-    <div className="min-h-screen bg-[#Fef8e7] p-4 md:p-8 font-mono text-black pb-24 select-none">
+    <div className="min-h-screen bg-[#Fef8e7] p-4 md:p-8 font-mono text-black pb-24 select-none relative">
+      
+      {/* NOTIFICACIÓN FLOTANTE DE ÉXITO (TOAST) */}
+      {successMessage && (
+        <div className="fixed top-5 left-1/2 transform -translate-x-1/2 z-50 bg-emerald-400 border-4 border-black px-6 py-3 rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-black font-black text-xs uppercase animate-bounce">
+          ✅ {successMessage}
+        </div>
+      )}
+
       <div className="max-w-4xl mx-auto space-y-6 flex flex-col items-center">
         
         {/* CABECERA */}
@@ -120,10 +195,13 @@ export default function CalendarScreen() {
           </div>
         </header>
 
-        {/* CUADRÍCULA DEL CALENDARIO */}
-        <CalendarGrid onSelectDay={(dateStr) => setSelectedDate(dateStr)} />
+        {/* CALENDARIO CON SEMÁFORO Y HOY EN AZUL */}
+        <CalendarGrid 
+          onSelectDay={(dateStr) => setSelectedDate(dateStr)} 
+          dayTasks={dayTasks} 
+        />
 
-        {/* TABLERO DE VIÑETAS CÓMICAS (NOTAS GUARDADAS) */}
+        {/* NOTAS GUARDADAS */}
         <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-6 pt-4">
           {savedNotes.map(note => (
             <div 
@@ -159,7 +237,7 @@ export default function CalendarScreen() {
         </div>
       </div>
 
-      {/* MODAL TAREAS DEL DÍA SELECCIONADO */}
+      {/* MODAL TAREAS DEL DÍA */}
       {selectedDate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 font-mono select-none">
           <div className="w-full max-w-md bg-amber-400 border-4 border-black rounded-3xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-6 space-y-4">
@@ -167,7 +245,7 @@ export default function CalendarScreen() {
             <div className="flex justify-between items-center border-b-4 border-black pb-3">
               <div>
                 <h3 className="font-black uppercase text-base text-black">
-                  {aMayusculas('Tareas del Día')}
+                  {aMayusculas('Actividades del Día')}
                 </h3>
                 <p className="text-xs font-bold text-amber-950">{selectedDate}</p>
               </div>
@@ -180,7 +258,6 @@ export default function CalendarScreen() {
               </button>
             </div>
 
-            {/* BOTÓN PARA ABRIR LIENZO S-PEN PARA ESTA FECHA */}
             <button
               type="button"
               onClick={() => setIsCanvasOpen(true)}
@@ -189,40 +266,53 @@ export default function CalendarScreen() {
               ✏️ {aMayusculas('Abrir Lienzo S-Pen')}
             </button>
 
-            {/* CAMPO CON BOTÓN DE MICRÓFONO CONECTADO */}
-            <div className="flex gap-2 items-center">
-              <input
-                type="text"
-                placeholder="Nueva tarea..."
-                value={newTaskText}
-                onChange={(e) => setNewTaskText(e.target.value)}
-                className="flex-1 p-3 bg-white border-4 border-black rounded-xl text-xs font-bold uppercase focus:outline-none"
-              />
-              <button
-                type="button"
-                onClick={() => setIsVoiceOpen(true)}
-                className="p-3 bg-white border-4 border-black rounded-xl font-black text-base shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all cursor-pointer"
-                title="Dictar tarea por voz"
-              >
-                🎙️
-              </button>
-              <button
-                type="button"
-                onClick={handleAddTask}
-                className="p-3 bg-white border-4 border-black rounded-xl font-black text-base shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all cursor-pointer"
-              >
-                +
-              </button>
+            {/* FORMULARIO DE NUEVA ACTIVIDAD CON BOTÓN EXPLÍCITO DE GUARDAR */}
+            <div className="space-y-2 bg-amber-300 p-3 border-2 border-black rounded-2xl">
+              <div className="flex gap-2">
+                <input
+                  type="time"
+                  value={newTaskTime}
+                  onChange={(e) => setNewTaskTime(e.target.value)}
+                  className="p-2.5 bg-white border-4 border-black rounded-xl text-xs font-bold uppercase focus:outline-none"
+                />
+                <input
+                  type="text"
+                  placeholder="Ej. Cita con el dr..."
+                  value={newTaskText}
+                  onChange={(e) => setNewTaskText(e.target.value)}
+                  className="flex-1 p-2.5 bg-white border-4 border-black rounded-xl text-xs font-bold uppercase focus:outline-none"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsVoiceOpen(true)}
+                  className="flex-1 py-2.5 bg-white border-4 border-black rounded-xl font-black text-xs uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all cursor-pointer"
+                >
+                  🎙️ {aMayusculas('Dictar')}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAddTask}
+                  className="flex-1 py-2.5 bg-emerald-400 hover:bg-emerald-300 border-4 border-black rounded-xl font-black text-xs uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all cursor-pointer"
+                >
+                  💾 {aMayusculas('Guardar Actividad')}
+                </button>
+              </div>
             </div>
 
-            {/* LISTA DE TAREAS REGISTRADAS EN LA FECHA */}
             <div className="space-y-2 max-h-48 overflow-y-auto pt-2">
               {(dayTasks[selectedDate] || []).map((task) => (
                 <div 
                   key={task.id} 
                   className="flex justify-between items-center p-2.5 bg-white border-2 border-black rounded-xl text-xs font-bold uppercase"
                 >
-                  <span className="break-all">{task.text}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="bg-amber-200 border border-black px-1.5 py-0.5 rounded text-[10px] font-black">
+                      {task.time}
+                    </span>
+                    <span className="break-all font-bold">{task.text}</span>
+                  </div>
                   <button 
                     type="button"
                     onClick={() => handleDeleteTask(task.id)}
@@ -234,7 +324,7 @@ export default function CalendarScreen() {
               ))}
               {(!dayTasks[selectedDate] || dayTasks[selectedDate].length === 0) && (
                 <p className="text-center text-xs font-black text-amber-950 uppercase pt-2">
-                  No hay tareas programadas
+                  No hay actividades programadas
                 </p>
               )}
             </div>
@@ -243,7 +333,6 @@ export default function CalendarScreen() {
         </div>
       )}
 
-      {/* MODAL LIENZO DE DIBUJO / MANUSCRITO */}
       {isCanvasOpen && (
         <SIdenoteCanvas 
           onClose={() => setIsCanvasOpen(false)} 
@@ -251,7 +340,6 @@ export default function CalendarScreen() {
         />
       )}
 
-      {/* MODAL DE DICTADO POR VOZ */}
       {isVoiceOpen && (
         <VoiceNoteModal 
           onClose={() => setIsVoiceOpen(false)} 
