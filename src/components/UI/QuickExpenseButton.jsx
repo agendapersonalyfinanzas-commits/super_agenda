@@ -26,7 +26,7 @@ export default function QuickExpenseButton({
         type="button"
         draggable={false}
         onClick={() => onClick && onClick(action)}
-        className={`w-24 h-24 sm:w-28 sm:h-28 rounded-full border-4 border-black bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all relative overflow-hidden ${
+        className={`w-20 h-20 sm:w-24 sm:h-24 rounded-full border-4 border-black bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all relative overflow-hidden ${
           isEditMode ? 'ring-4 ring-amber-400' : 'cursor-pointer hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]'
         }`}
       >
