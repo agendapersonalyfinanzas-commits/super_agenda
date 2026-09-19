@@ -172,9 +172,7 @@ export default function QuickActionGrid(props) {
       amount: finalAmount,
       concept: transConcept.toUpperCase(),
       category: transAction?.category || 'VARIOS',
-      type: type,
-      transactionType: type,
-      userName: 'LUIS RICARDO'
+      type: type
     };
 
     if (processTxHandler) {
@@ -209,7 +207,6 @@ export default function QuickActionGrid(props) {
         </div>
       </div>
 
-      {/* 🛑 AQUÍ ESTABA EL DETALLE: Se agregó onDragOver={handleDragOver} al contenedor grid */}
       <div className="grid grid-cols-3 sm:grid-cols-4 gap-6 pt-2" onDragOver={handleDragOver}>
         {actions.map((action, idx) => {
           const uniqueKey = `${action.id || 'btn'}_${idx}`;

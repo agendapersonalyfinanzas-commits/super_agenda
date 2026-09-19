@@ -228,6 +228,11 @@ export default function DashboardScreen() {
                 isExpense={true}
                 type="expense"
                 presetIcons={PRESET_ICONS}
+                onReorderActions={(newItems, type) => {
+                  if (typeof quickActionsManager.handleReorderActions === 'function') {
+                    quickActionsManager.handleReorderActions(newItems, type);
+                  }
+                }}
               />
 
               {/* INGRESOS */}
@@ -251,6 +256,11 @@ export default function DashboardScreen() {
                 isExpense={false}
                 type="income"
                 presetIcons={PRESET_ICONS}
+                onReorderActions={(newItems, type) => {
+                  if (typeof quickActionsManager.handleReorderActions === 'function') {
+                    quickActionsManager.handleReorderActions(newItems, type);
+                  }
+                }}
               />
 
               {/* HISTORIAL */}
