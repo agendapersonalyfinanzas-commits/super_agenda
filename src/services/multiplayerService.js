@@ -1,11 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
-
-// Inicialización de Supabase usando variables de entorno de Vite
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-
-// 🚀 Exportación explícita de la instancia de Supabase
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+import { supabase } from '../supabaseClient';
 
 // Obtener los pilotos de la misma liga o escuadrón
 export async function fetchSquadronPilots() {

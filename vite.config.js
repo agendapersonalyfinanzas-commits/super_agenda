@@ -1,12 +1,10 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import basicSsl from '@vitejs/plugin-basic-ssl'
 import { VitePWA } from 'vite-plugin-pwa'
 
-export default defineConfig(({ command }) => ({
+export default defineConfig({
   plugins: [
     react(),
-    command === 'serve' ? basicSsl() : [],
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['super-snoopy.png'],
@@ -36,4 +34,4 @@ export default defineConfig(({ command }) => ({
       }
     })
   ]
-}))
+})

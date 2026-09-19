@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../services/multiplayerService';
+import { supabase } from '../supabaseClient';
+import { aMayusculas } from '../utils/mayusculas.js';
 
-export function useBaronGameLogic(userId) {
-  const [score, setScore] = useState(50); // Valor neutral por defecto
+export function useBaronGameLogic(activeUser) {
+  const [score, setScore] = useState(50);
   const [loading, setLoading] = useState(true);
   const [financialStats, setFinancialStats] = useState({
     income: 0,
@@ -12,59 +13,67 @@ export function useBaronGameLogic(userId) {
   });
 
   useEffect(() => {
-    if (!userId) {
-      setLoading(false);
-      return;
-    }
-
     async function calculateFinancialHealth() {
       try {
         setLoading(true);
-        const now = new Date();
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
-        // 1. Consultar transacciones del mes actual en Supabase
-        const { data: transactions, error } = await supabase
-          .from('transactions')
-          .select('*')
-          .eq('user_id', userId)
-          .gte('created_at', startOfMonth);
+        // 1. Obtener la sesión activa de Supabase
+        const { data: { session } } = await supabase.auth.getSession();
+        const userEmail = session?.user?.email;
+        const userId = session?.user?.id;
 
-        if (error) {
-          console.error('Error al consultar transacciones financieras:', error);
-          setLoading(false);
-          return;
+        // Si no se recibe activeUser, priorizar 'LUIS RICARDO'
+        const currentUser = activeUser ? aMayusculas(activeUser) : 'LUIS RICARDO';
+
+        // 2. Consultar transacciones vinculadas por nombre, email o ID de usuario
+        let query = supabase.from('transactions').select('*');
+
+        if (userId || userEmail) {
+          query = query.or(`user_name.ilike.%${currentUser}%,auth_user_email.eq.${userEmail},user_id.eq.${userId}`);
+        } else {
+          query = query.ilike('user_name', `%${currentUser}%`);
         }
+
+        const { data: transactionsData, error: txError } = await query;
+
+        if (txError) {
+          console.error('❌ [BaronGame] Error al consultar transactions:', txError);
+        }
+
+        const allTransactions = transactionsData || [];
 
         let totalIncome = 0;
         let totalExpense = 0;
 
-        if (transactions && transactions.length > 0) {
-          transactions.forEach(tx => {
-            if (tx.type === 'income') totalIncome += Number(tx.amount || 0);
-            if (tx.type === 'expense') totalExpense += Number(tx.amount || 0);
-          });
-        }
+        allTransactions.forEach(tx => {
+          const amount = Number(tx.amount || 0);
+          const type = (tx.type || tx.transaction_type || '').toLowerCase();
 
-        // 2. Calcular Tasa de Ahorro
+          if (type === 'income' || type === 'ingreso') {
+            totalIncome += amount;
+          } else if (type === 'expense' || type === 'gasto' || type === 'egreso') {
+            totalExpense += amount;
+          }
+        });
+
+        console.log(`📊 [BaronGame (${currentUser})] Totales -> Ingresos:`, totalIncome, '| Gastos:', totalExpense);
+
+        // 3. Cálculos de salud financiera e ISF
         const savings = totalIncome - totalExpense;
         const savingsRate = totalIncome > 0 ? Math.max(0, (savings / totalIncome) * 100) : 0;
 
-        // 3. Calcular Eficiencia de Gasto
         let budgetEfficiency = 100;
         if (totalIncome > 0) {
           const expenseRatio = totalExpense / totalIncome;
-          if (expenseRatio > 0.9) budgetEfficiency = 20;       // Gastó casi todo -> ¡Zona Mayday!
-          else if (expenseRatio > 0.75) budgetEfficiency = 60; // Gasto moderado
-          else if (expenseRatio > 0.5) budgetEfficiency = 85;  // Buen margen
-          else budgetEfficiency = 100;                         // Excelente
+          if (expenseRatio > 0.9) budgetEfficiency = 20;       
+          else if (expenseRatio > 0.75) budgetEfficiency = 60; 
+          else if (expenseRatio > 0.5) budgetEfficiency = 85;  
+          else budgetEfficiency = 100;                         
         } else if (totalExpense > 0) {
           budgetEfficiency = 10;
         }
 
-        // 4. Fórmula del ISF (50% Tasa de Ahorro + 50% Eficiencia de Gasto)
         const finalISF = Math.round((savingsRate * 0.5) + (budgetEfficiency * 0.5));
-        
         const clampedScore = Math.min(100, Math.max(0, finalISF));
 
         setScore(clampedScore);
@@ -76,17 +85,16 @@ export function useBaronGameLogic(userId) {
         });
 
       } catch (err) {
-        console.error('Error inesperado calculando el cerebro financiero:', err);
+        console.error('💥 Error inesperado en el hook del juego:', err);
       } finally {
         setLoading(false);
       }
     }
 
     calculateFinancialHealth();
-  }, [userId]);
+  }, [activeUser]);
 
   return { score, loading, financialStats };
 }
 
-// Exportación por defecto adicional por seguridad
 export default useBaronGameLogic;

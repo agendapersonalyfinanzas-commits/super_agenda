@@ -4,21 +4,54 @@ import PDFPreviewModal from './PDFPreviewModal.jsx';
 
 export default function RecentTransactions({ transactions = [], onDelete, onUpdate }) {
   const [filter, setFilter] = useState('all'); // 'all' | 'expense' | 'income'
-  const [editingId, setEditingId] = useState(null);
-  const [newAmount, setNewAmount] = useState('');
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
+  // Estados Modal Edición
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editTx, setEditTx] = useState(null);
+  const [editConcept, setEditConcept] = useState('');
+  const [editAmount, setEditAmount] = useState('');
+  const [editType, setEditType] = useState('expense');
+
+  // Estados Modal Eliminación
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [txToDelete, setTxToDelete] = useState(null);
+
+  // --- MANEJADORES EDICIÓN ---
   const handleStartEdit = (tx) => {
-    setEditingId(tx.id);
-    setNewAmount(tx.amount);
+    setEditTx(tx);
+    setEditConcept(tx.concept || tx.category || '');
+    setEditAmount(tx.amount.toString());
+    setEditType(tx.transaction_type || 'expense');
+    setEditModalOpen(true);
   };
 
-  const handleSaveEdit = (id) => {
-    const parsed = Number(newAmount);
-    if (!isNaN(parsed) && onUpdate) {
-      onUpdate(id, parsed);
+  const handleSaveEdit = (e) => {
+    e.preventDefault();
+    const parsedAmount = Number(editAmount);
+    
+    if (!isNaN(parsedAmount) && parsedAmount > 0 && onUpdate && editTx) {
+      // Pasamos un objeto con todos los datos editables para que el componente padre lo actualice
+      onUpdate(editTx.id, {
+        amount: parsedAmount,
+        concept: editConcept.toUpperCase(),
+        transaction_type: editType
+      });
     }
-    setEditingId(null);
+    setEditModalOpen(false);
+  };
+
+  // --- MANEJADORES ELIMINACIÓN ---
+  const handleStartDelete = (tx) => {
+    setTxToDelete(tx);
+    setDeleteModalOpen(true);
+  };
+
+  const handleConfirmDelete = () => {
+    if (onDelete && txToDelete) {
+      onDelete(txToDelete.id);
+    }
+    setDeleteModalOpen(false);
   };
 
   // Filtrar transacciones según la pestaña seleccionada
@@ -114,57 +147,28 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {editingId === tx.id ? (
-                      <div className="flex items-center gap-1">
-                        <input
-                          type="number"
-                          step="any"
-                          autoFocus
-                          value={newAmount}
-                          onChange={(e) => setNewAmount(e.target.value)}
-                          className="w-22 px-2 py-1.5 border-2 border-black rounded-xl text-xs font-bold bg-white text-black"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleSaveEdit(tx.id)}
-                          className="bg-emerald-400 border-2 border-black px-2.5 py-1.5 rounded-xl font-black text-[10px] cursor-pointer shadow-[2px_2px_0px_0px_rgba(255,255,255,1)] hover:bg-emerald-300"
-                        >
-                          ✓
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setEditingId(null)}
-                          className="bg-stone-300 border-2 border-black px-2.5 py-1.5 rounded-xl font-black text-[10px] cursor-pointer shadow-[2px_2px_0px_0px_rgba(255,255,255,1)]"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ) : (
-                      <span className={`font-black text-sm ${isIncome ? 'text-emerald-700' : 'text-rose-700'}`}>
-                        {isIncome ? '+' : '-'}{formatearMoneda(tx.amount)}
-                      </span>
-                    )}
+                    <span className={`font-black text-sm ${isIncome ? 'text-emerald-700' : 'text-rose-700'}`}>
+                      {isIncome ? '+' : '-'}{formatearMoneda(tx.amount)}
+                    </span>
 
-                    {editingId !== tx.id && (
-                      <div className="flex items-center gap-1.5 ml-2 border-l-2 border-black pl-2">
-                        <button
-                          type="button"
-                          onClick={() => handleStartEdit(tx)}
-                          title="Editar monto"
-                          className="bg-amber-300 border-2 border-black w-7 h-7 rounded-xl font-black flex items-center justify-center text-xs cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:scale-105 transition-transform"
-                        >
-                          ✏️
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onDelete(tx.id)}
-                          title="Eliminar registro"
-                          className="bg-red-500 text-white border-2 border-black w-7 h-7 rounded-xl font-black flex items-center justify-center text-xs cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:scale-105 transition-transform"
-                        >
-                          🗑️
-                        </button>
-                      </div>
-                    )}
+                    <div className="flex items-center gap-1.5 ml-2 border-l-2 border-black pl-2">
+                      <button
+                        type="button"
+                        onClick={() => handleStartEdit(tx)}
+                        title="Editar movimiento"
+                        className="bg-amber-300 border-2 border-black w-7 h-7 rounded-xl font-black flex items-center justify-center text-xs cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:scale-105 transition-transform"
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleStartDelete(tx)}
+                        title="Eliminar registro"
+                        className="bg-red-500 text-white border-2 border-black w-7 h-7 rounded-xl font-black flex items-center justify-center text-xs cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:scale-105 transition-transform"
+                      >
+                        🗑️
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
@@ -178,6 +182,96 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
         onClose={() => setIsPreviewOpen(false)}
         transactions={filteredTransactions}
       />
+
+      {/* =========================================
+          MODAL EDICIÓN DE MOVIMIENTO (Estilo Peanuts)
+          ========================================= */}
+      {editModalOpen && editTx && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm font-mono">
+          <div className="bg-amber-100 border-4 border-black p-6 rounded-3xl w-full max-w-sm shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] animate-bounce-short">
+            <h2 className="text-xl font-black uppercase text-black mb-4 border-b-4 border-black pb-2">✏️ Editar Movimiento</h2>
+            
+            <form onSubmit={handleSaveEdit} className="flex flex-col gap-4">
+              <div className="flex flex-col">
+                <label className="text-sm font-black uppercase mb-1">Tipo:</label>
+                <div className="flex gap-2">
+                  <button 
+                    type="button" 
+                    onClick={() => setEditType('expense')} 
+                    className={`flex-1 py-2 rounded-xl border-4 border-black font-black uppercase transition-all ${editType === 'expense' ? 'bg-rose-500 text-white shadow-none translate-x-1 translate-y-1' : 'bg-white text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'}`}
+                  >
+                    🔴 Egreso
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => setEditType('income')} 
+                    className={`flex-1 py-2 rounded-xl border-4 border-black font-black uppercase transition-all ${editType === 'income' ? 'bg-emerald-500 text-white shadow-none translate-x-1 translate-y-1' : 'bg-white text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'}`}
+                  >
+                    🟢 Ingreso
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex flex-col">
+                <label className="text-sm font-black uppercase mb-1">Concepto:</label>
+                <input 
+                  type="text" 
+                  value={editConcept} 
+                  onChange={(e) => setEditConcept(e.target.value)} 
+                  required 
+                  className="border-4 border-black p-2 rounded-xl text-lg font-bold uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:outline-none focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all bg-white" 
+                />
+              </div>
+
+              <div className="flex flex-col">
+                <label className="text-sm font-black uppercase mb-1">Monto ($):</label>
+                <input 
+                  type="number" 
+                  step="0.01" 
+                  value={editAmount} 
+                  onChange={(e) => setEditAmount(e.target.value)} 
+                  required 
+                  className="border-4 border-black p-2 rounded-xl text-2xl font-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:outline-none focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all bg-white" 
+                />
+              </div>
+
+              <div className="flex gap-4 mt-4">
+                <button type="button" onClick={() => setEditModalOpen(false)} className="flex-1 bg-white border-4 border-black py-2 rounded-xl font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1">
+                  CANCELAR
+                </button>
+                <button type="submit" className="flex-1 bg-blue-500 text-white border-4 border-black py-2 rounded-xl font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1">
+                  GUARDAR
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================
+          MODAL CONFIRMACIÓN ELIMINAR
+          ========================================= */}
+      {deleteModalOpen && txToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm font-mono">
+          <div className="bg-rose-100 border-4 border-black p-6 rounded-3xl w-full max-w-sm shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] animate-bounce-short">
+            <h2 className="text-xl font-black uppercase text-black mb-4 border-b-4 border-black pb-2 text-center">⚠️ ¿Eliminar?</h2>
+            
+            <p className="text-center font-bold text-sm mb-6 uppercase text-black">
+              ¿Estás seguro de eliminar el movimiento? <br/>
+              <span className="text-rose-600 text-xl block mt-2 font-black">"{txToDelete.concept || txToDelete.category}"</span>
+            </p>
+            
+            <div className="flex gap-4 mt-4">
+              <button type="button" onClick={() => setDeleteModalOpen(false)} className="flex-1 bg-white border-4 border-black py-2 rounded-xl font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1">
+                CANCELAR
+              </button>
+              <button type="button" onClick={handleConfirmDelete} className="flex-1 bg-red-500 text-white border-4 border-black py-2 rounded-xl font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1">
+                ELIMINAR
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

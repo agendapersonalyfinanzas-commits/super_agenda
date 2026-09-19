@@ -20,7 +20,6 @@ export default function DashboardHeader({ user_name, activeUser, onOcrOpen }) {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-          // 1. Consultar la tabla de perfiles usando .maybeSingle() para evitar errores 406 si no existe el registro
           const { data: profile } = await supabase
             .from('profiles')
             .select('nombre, apellido_paterno, apellido_materno')
@@ -28,7 +27,6 @@ export default function DashboardHeader({ user_name, activeUser, onOcrOpen }) {
             .maybeSingle();
 
           if (profile) {
-            // Unir Nombre + Apellido Paterno + Apellido Materno de forma limpia
             const nameParts = [
               profile.nombre, 
               profile.apellido_paterno, 
@@ -41,14 +39,12 @@ export default function DashboardHeader({ user_name, activeUser, onOcrOpen }) {
             }
           }
 
-          // 2. Si no está en la tabla, revisar user_metadata
           const metaName = user.user_metadata?.nombre;
           if (metaName) {
             setDisplayName(metaName.toUpperCase());
             return;
           }
 
-          // 3. Respaldo definitivo si no hay datos de nombre en la BD
           setDisplayName('LUIS RICARDO'); 
 
         } else {
@@ -180,8 +176,9 @@ export default function DashboardHeader({ user_name, activeUser, onOcrOpen }) {
       {/* Botón de Acción y Contenedor de Fecha */}
       <div className="w-full flex flex-col gap-3 mt-1">
         <button 
+          type="button"
           onClick={onOcrOpen}
-          className="w-full bg-white border-[3px] border-black rounded-2xl py-2.5 px-4 font-black text-black shadow-[4px_4px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all flex items-center justify-center gap-2 text-sm uppercase"
+          className="w-full bg-white border-[3px] border-black rounded-2xl py-2.5 px-4 font-black text-black shadow-[4px_4px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all flex items-center justify-center gap-2 text-sm uppercase cursor-pointer"
         >
           📸 ESCANEAR TICKET
         </button>

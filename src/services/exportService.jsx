@@ -6,22 +6,28 @@ if (pdfMake && pdfMake.vfs) {
 }
 
 export const generateWeeklyReportPDF = async (weeklyTotal, categoryData, expensesList) => {
+  // 🔥 MODIFICADO: Agregamos la columna de "Concepto" a la cabecera
   const tableRows = [
     [
       { text: 'Fecha', style: 'tableHeader' },
+      { text: 'Concepto', style: 'tableHeader' },
       { text: 'Categoría', style: 'tableHeader' },
       { text: 'Monto', style: 'tableHeader' }
     ]
   ]
 
   expensesList.forEach(item => {
-    const formattedDate = new Date(item.expense_date).toLocaleDateString('es-MX', {
+    // 🔥 CORREGIDO: Ahora busca 'transaction_date' que es el nombre real en tu base de datos
+    const dateToUse = item.transaction_date || item.expense_date || new Date().toISOString();
+    const formattedDate = new Date(dateToUse).toLocaleDateString('es-MX', {
       day: 'numeric',
       month: 'short'
     })
+    
     tableRows.push([
       { text: formattedDate, style: 'tableCell' },
-      { text: item.category, style: 'tableCell' },
+      { text: item.concept || '---', style: 'tableCell' }, // 👈 Insertamos el concepto aquí
+      { text: item.category || 'GENERAL', style: 'tableCell' },
       { text: '$' + parseFloat(item.amount).toFixed(2), style: 'tableCellAlignRight' }
     ])
   })
@@ -34,7 +40,7 @@ export const generateWeeklyReportPDF = async (weeklyTotal, categoryData, expense
         margin: [0, 0, 0, 5]
       },
       {
-        text: 'Resumen acumulado de gastos semanales',
+        text: 'Resumen acumulado de movimientos',
         style: 'headerSubtitle',
         margin: [0, 0, 0, 20]
       },
@@ -70,7 +76,8 @@ export const generateWeeklyReportPDF = async (weeklyTotal, categoryData, expense
         style: 'tableExample',
         table: {
           headerRows: 1,
-          widths: ['25%', '50%', '25%'],
+          // 🔥 MODIFICADO: Ajustamos los anchos para que quepan las 4 columnas perfectamente
+          widths: ['15%', '35%', '25%', '25%'], 
           body: tableRows
         },
         layout: {
