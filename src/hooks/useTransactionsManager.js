@@ -22,16 +22,54 @@ export function useTransactionsManager(activeUser, auditorMode, isMasterAuditor,
       const userId = session.user.id;
       const userEmail = session.user.email;
 
-      // Fuente de verdad absoluta: Consultar transacciones exclusivas del user_id autenticado
       let transQuery = supabase
         .from('transactions')
         .select('*')
         .order('transaction_date', { ascending: false });
-      
-      if (userId) {
-        transQuery = transQuery.eq('user_id', userId);
-      } else if (userEmail) {
-        transQuery = transQuery.eq('auth_user_email', userEmail);
+
+      // 🌟 LÓGICA DE AUDITORÍA MULTICAMPO: Busca por UUID, correo o nombre para obtener los $10,000 de Ivonne
+      if (auditorMode && activeUser) {
+        let targetId = null;
+        let targetName = '';
+        let targetEmail = '';
+
+        if (typeof activeUser === 'object' && activeUser !== null) {
+          targetId = activeUser.id || null;
+          targetName = `${activeUser.nombre || ''} ${activeUser.apellido_paterno || ''}`.trim();
+          targetEmail = activeUser.email || '';
+        } else if (typeof activeUser === 'string') {
+          const isUUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(activeUser);
+          if (isUUID) {
+            targetId = activeUser;
+          } else if (activeUser.includes('@')) {
+            targetEmail = activeUser;
+          } else {
+            targetName = activeUser;
+          }
+        }
+
+        const conditions = [];
+        if (targetId) {
+          conditions.push(`user_id.eq.${targetId}`);
+          conditions.push(`player_id.eq.${targetId}`);
+        }
+        if (targetEmail) {
+          conditions.push(`auth_user_email.eq.${targetEmail}`);
+        }
+        if (targetName) {
+          conditions.push(`auth_user_email.ilike.%${targetName}%`);
+        }
+
+        if (conditions.length > 0) {
+          transQuery = transQuery.or(conditions.join(','));
+        }
+      } else {
+        // Modo normal: Consultar transacciones exclusivas del usuario autenticado
+        if (userEmail) {
+          transQuery = transQuery.eq('auth_user_email', userEmail);
+        } else if (userId) {
+          transQuery = transQuery.eq('user_id', userId);
+        }
       }
 
       const { data: trans, error: transError } = await transQuery;
@@ -62,9 +100,17 @@ export function useTransactionsManager(activeUser, auditorMode, isMasterAuditor,
         setTotalIncome(incomeSum);
         setIsSampleData(false);
 
-        // Balance unificado para el usuario real autenticado
+        // Balance unificado asignando dinámicamente el nombre del usuario auditado
         const netBalance = incomeSum - expensesSum;
-        const currentUserName = activeUser ? aMayusculas(activeUser) : 'LUIS RICARDO';
+        let currentUserName = 'LUIS RICARDO';
+
+        if (auditorMode && activeUser) {
+          if (typeof activeUser === 'object' && activeUser !== null) {
+            currentUserName = aMayusculas(`${activeUser.nombre || ''} ${activeUser.apellido_paterno || ''}`.trim() || 'IVONNE VALDEZ');
+          } else {
+            currentUserName = aMayusculas(activeUser);
+          }
+        }
 
         setActivePlayers([
           {
@@ -76,7 +122,7 @@ export function useTransactionsManager(activeUser, auditorMode, isMasterAuditor,
     } catch (err) {
       console.error('Error al obtener transacciones:', err?.message || err);
     }
-  }, [activeUser]);
+  }, [activeUser, auditorMode, isMasterAuditor]);
 
   useEffect(() => {
     fetchTransactionsAndTotals();
@@ -116,10 +162,8 @@ export function useTransactionsManager(activeUser, auditorMode, isMasterAuditor,
     }
   };
 
-  // 🔥 MODIFICADO: Ahora recibe el objeto completo y se lo pasa a los servicios de mutación
   const handleUpdateTransactionAmount = async (id, updatedData) => {
     try {
-      // Validamos si viene del nuevo modal (objeto) o de algún otro lado (número)
       const payload = typeof updatedData === 'object' ? {
         amount: aNumero(updatedData.amount),
         concept: aMayusculas(updatedData.concept),

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 
 // Cliente Supabase
 import { supabase } from '../../../supabaseClient';
@@ -12,7 +12,7 @@ import { usePlayerManagement } from '../../../hooks/usePlayerManagement.js';
 import { useTransactionsManager } from '../../../hooks/useTransactionsManager.js';
 import { useQuickActionsManager } from '../../../hooks/useQuickActionsManager.js';
 
-// Componentes externos con importación directa (Previene el error de Vite)
+// Componentes externos
 import DashboardHeader from '../../Expenses/DashboardHeader';
 import AddCustomButtonModal from '../../Expenses/AddCustomButtonModal';
 import EditImageModal from '../../Expenses/EditImageModal';
@@ -29,7 +29,6 @@ import RecentTransactions from '../RecentTransactions.jsx';
 import Navigation from '../Navigation.jsx';
 import GamesScreen from '../../Games/GamesScreen.jsx';
 
-// Lista exacta de 16 iconos predeterminados
 const PRESET_ICONS = [
   '/charlie-market.png',
   '/finanzas.png',
@@ -53,12 +52,12 @@ export default function DashboardScreen() {
   const [activeTab, setActiveTab] = useState('finances');
   const [currentUser, setCurrentUser] = useState(null);
   const [auditorMode, setAuditorMode] = useState(false);
+  const [selectedAuditedUser, setSelectedAuditedUser] = useState(null);
+  const [usersList, setUsersList] = useState([]); // 🌟 Lista real de perfiles registrados
   const [isOcrOpen, setIsOcrOpen] = useState(false);
 
-  // Estados locales para el modal de edición de imagen/etiqueta
+  // Estados locales para modales
   const [activeImageTarget, setActiveImageTarget] = useState(null);
-
-  // Estados locales para el formulario del modal de botón personalizado
   const [customName, setCustomName] = useState('');
   const [customAmount, setCustomAmount] = useState('');
   const [customCategory, setCustomCategory] = useState('VARIOS');
@@ -67,9 +66,32 @@ export default function DashboardScreen() {
   // --- 1. HOOK DE JUGADORES ---
   const playerManager = usePlayerManagement();
 
-  // --- 2. HOOK DE TRANSACCIONES Y TOTALES ---
+  // 🌟 Extraer de manera precisa la identidad, UUID o nombre del usuario a auditar
+  const targetUserForTx = useMemo(() => {
+    if (!auditorMode || !selectedAuditedUser) {
+      return playerManager.activeUser;
+    }
+
+    // Si selectedAuditedUser es un objeto completo de perfil (desde DashboardHeader)
+    if (typeof selectedAuditedUser === 'object' && selectedAuditedUser !== null) {
+      return selectedAuditedUser.id || selectedAuditedUser.nombre || selectedAuditedUser;
+    }
+
+    // Si selectedAuditedUser viene como string (UUID o Nombre), busca en la lista de perfiles
+    const foundUser = usersList.find(
+      (u) => u.id === selectedAuditedUser || u.nombre === selectedAuditedUser
+    );
+
+    if (foundUser) {
+      return foundUser.id || foundUser.nombre;
+    }
+
+    return selectedAuditedUser;
+  }, [auditorMode, selectedAuditedUser, playerManager.activeUser, usersList]);
+
+  // --- 2. HOOK DE TRANSACCIONES ---
   const txManager = useTransactionsManager(
-    playerManager.activeUser,
+    targetUserForTx,
     auditorMode,
     currentUser?.email === 'maestroluisricardo17@gmail.com',
     playerManager.availableUsersList
@@ -78,16 +100,45 @@ export default function DashboardScreen() {
   // --- 3. HOOK DE BOTONERA RÁPIDA ---
   const quickActionsManager = useQuickActionsManager();
 
-  // Obtener usuario autenticado de Supabase
+  // Obtener usuario autenticado de Supabase y cargar lista de perfiles si es auditor
   useEffect(() => {
-    const fetchUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) setCurrentUser(user);
+    const fetchUserAndProfiles = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          setCurrentUser(user);
+
+          // Si es el usuario Maestro/Auditor, traemos los perfiles reales desde Supabase
+          if (user.email?.toLowerCase() === 'maestroluisricardo17@gmail.com') {
+            const { data: profiles, error } = await supabase
+              .from('profiles')
+              .select('id, nombre, apellido_paterno, apellido_materno'); // 👈 Consulta corregida (sin 'email')
+
+            if (error) {
+              console.error('❌ Error al obtener perfiles de Supabase:', error.message);
+            } else if (profiles) {
+              console.log('✅ Perfiles cargados con éxito para auditoría:', profiles);
+              setUsersList(profiles);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('❌ Error inesperado al cargar usuario/perfiles:', err);
+      }
     };
-    fetchUser();
+    fetchUserAndProfiles();
   }, []);
 
   const isMasterAuditor = currentUser?.email === 'maestroluisricardo17@gmail.com';
+
+  // Toggle de Modo Dios con reseteo de usuario auditado al apagar
+  const handleToggleAuditorMode = () => {
+    const nextMode = !auditorMode;
+    setAuditorMode(nextMode);
+    if (!nextMode) {
+      setSelectedAuditedUser(null);
+    }
+  };
 
   const handleSignOut = async () => {
     try { await supabase.auth.signOut({ scope: 'global' }); } catch (err) {}
@@ -109,7 +160,6 @@ export default function DashboardScreen() {
     (b) => b.id === activeImageTarget
   );
 
-  // Manejador limpio que recibe los datos desde el modal y los envía al hook
   const handleCustomButtonSubmit = (e) => {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
 
@@ -121,20 +171,16 @@ export default function DashboardScreen() {
       type: quickActionsManager.modalType || 'expense'
     };
 
-    console.log("💾 Guardando botón personalizado:", payload);
-
     if (typeof quickActionsManager.handleAddAction === 'function') {
       quickActionsManager.handleAddAction(payload, payload.type);
     }
 
-    // Limpiar campos
     setCustomName('');
     setCustomAmount('');
     setCustomCategory('VARIOS');
     setSelectedIcon(PRESET_ICONS[0]);
   };
 
-  // Manejador para actualizar imagen y etiqueta de un botón existente en modo edición
   const handleSaveImageConfig = (newIcon, newLabel) => {
     if (typeof quickActionsManager.handleUpdateActionCustomization === 'function') {
       quickActionsManager.handleUpdateActionCustomization(activeImageTarget, { icon: newIcon, label: newLabel });
@@ -154,7 +200,7 @@ export default function DashboardScreen() {
       ) : (
         <div className="max-w-4xl mx-auto space-y-8">
           
-          {/* BARRA SUPERIOR (MODO DIOS / SALIR) */}
+          {/* BARRA SUPERIOR */}
           <div className="flex justify-between items-center mb-2">
             {isMasterAuditor ? (
               <div className={`flex items-center gap-3 px-4 py-2 rounded-xl border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-colors duration-300 ${auditorMode ? 'bg-red-500' : 'bg-stone-900'}`}>
@@ -163,7 +209,7 @@ export default function DashboardScreen() {
                 </span>
                 <button
                   type="button"
-                  onClick={() => setAuditorMode(!auditorMode)}
+                  onClick={handleToggleAuditorMode}
                   className={`relative w-12 h-6 border-2 border-black rounded-full cursor-pointer transition-colors ${auditorMode ? 'bg-amber-300' : 'bg-stone-600'}`}
                 >
                   <div className={`w-4 h-4 bg-white border-2 border-black rounded-full absolute top-0.5 transition-transform duration-300 ${auditorMode ? 'translate-x-5.5' : 'translate-x-1'}`} />
@@ -182,24 +228,24 @@ export default function DashboardScreen() {
 
           {auditorMode && (
             <div className="bg-red-500 text-white border-4 border-black p-3 rounded-xl text-center font-black text-xs uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] animate-pulse tracking-wide mb-4">
-              ⚠️ Precaución
+              ⚠️ Modo Dios (Auditoría) Activo
             </div>
           )}
 
-          {/* CABECERA */}
+          {/* CABECERA (PASANDO LA LISTA REAL DE PROFILES Y USANDO ÚNICAMENTE auditorMode PARA CONTROLAR SU VISIBILIDAD) */}
           <DashboardHeader 
             user_name={currentUser?.email} 
             activeUser={playerManager.activeUser} 
-            onOcrOpen={() => setIsOcrOpen(true)} 
+            onOcrOpen={() => setIsOcrOpen(true)}
+            isAuditor={auditorMode}
+            usersList={usersList}
+            selectedAuditedUser={selectedAuditedUser}
+            setSelectedAuditedUser={setSelectedAuditedUser}
           />
           
-          {/* PANEL DE CONTROL DE USUARIO ÚNICO */}
-          <PlayerControlPanel 
-            activeUser={playerManager.activeUser}
-          />
+          <PlayerControlPanel activeUser={playerManager.activeUser} />
 
           <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            
             <GlobalBalanceCard 
               totalIncome={txManager.totalIncome}
               weeklyTotal={txManager.weeklyTotal}
@@ -208,8 +254,6 @@ export default function DashboardScreen() {
             />
 
             <div className="md:col-span-2 space-y-6">
-              
-              {/* EGRESOS */}
               <QuickActionGrid 
                 title="💸 Registrar Egresos"
                 subtitle="Toca un botón para mover • O toca para registrar"
@@ -239,7 +283,6 @@ export default function DashboardScreen() {
                 }}
               />
 
-              {/* INGRESOS */}
               <QuickActionGrid 
                 title="💰 Registrar Ingresos"
                 subtitle={`Guarda tus entradas de dinero como ${playerManager.activeUser}`}
@@ -267,17 +310,14 @@ export default function DashboardScreen() {
                 }}
               />
 
-              {/* HISTORIAL */}
               <RecentTransactions 
                 transactions={txManager.recentTransactions}
                 onDelete={txManager.handleDeleteTransaction}
                 onUpdate={txManager.handleUpdateTransactionAmount}
               />
-
             </div>
           </section>
 
-          {/* PROGRESO DE JUGADORES */}
           <PlayerProgressSection 
             activePlayers={txManager.activePlayers}
             activeUser={playerManager.activeUser}
@@ -288,7 +328,6 @@ export default function DashboardScreen() {
 
       <Navigation activeTab={activeTab} setActiveTab={setActiveTab} />
 
-      {/* TOAST FLOTANTE */}
       {txManager.lastSavedTx && (
         <div className="fixed bottom-24 right-6 z-50 bg-black text-white border-4 border-amber-400 p-4 rounded-3xl shadow-[8px_8px_0px_0px_rgba(251,191,36,1)] flex items-center gap-4 animate-in slide-in-from-bottom-5 font-mono">
           <div>
@@ -305,7 +344,6 @@ export default function DashboardScreen() {
         </div>
       )}
 
-      {/* MODALES */}
       {quickActionsManager.isAddCustomOpen && (
         <AddCustomButtonModal 
           onClose={() => quickActionsManager.setIsAddCustomOpen(false)} 

@@ -19,6 +19,11 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('finances'); // 'finances' | 'agenda' | 'metrics' | 'games'
   const [selectedGame, setSelectedGame] = useState(null); // 👈 Controla qué juego específico se abre dentro de GamesScreen
 
+  // 🌟 PASO 1: ESTADOS PARA MODO DIOS / AUDITOR
+  const [isAuditor, setIsAuditor] = useState(false);
+  const [usersList, setUsersList] = useState([]);
+  const [selectedAuditedUser, setSelectedAuditedUser] = useState(null); // null = Mis propios datos
+
   // Estados para el formulario de Autenticación
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -37,7 +42,10 @@ export default function App() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (session) fetchUserProfile(session.user.id);
+      if (session) {
+        fetchUserProfile(session.user.id);
+        checkAuditorStatus(); // 👈 PASO 1: Verificar si es auditor al cargar sesión
+      }
       setLoading(false);
     });
 
@@ -47,14 +55,48 @@ export default function App() {
       setSession(session);
       if (session) {
         fetchUserProfile(session.user.id);
+        checkAuditorStatus(); // 👈 PASO 1: Verificar si es auditor al cambiar sesión
       } else {
         setuser_name('');
+        // Limpiar estados de auditor al cerrar sesión
+        setIsAuditor(false);
+        setUsersList([]);
+        setSelectedAuditedUser(null);
       }
       setLoading(false);
     });
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // 🌟 PASO 1: Función para verificar si el usuario es Auditor
+  const checkAuditorStatus = async () => {
+    try {
+      const { data, error } = await supabase.rpc('is_secret_auditor');
+      
+      if (!error && data === true) {
+        setIsAuditor(true);
+        fetchUsersList(); // Si es auditor, cargamos la lista de todos los usuarios
+      } else {
+        setIsAuditor(false);
+      }
+    } catch (err) {
+      console.error('Error al verificar estado de auditor:', err);
+    }
+  };
+
+  // 🌟 PASO 1: Cargar la lista de todos los usuarios para el menú desplegable
+  const fetchUsersList = async () => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, nombre, apellido_paterno, apellido_materno');
+
+    if (!error && data) {
+      setUsersList(data);
+    } else if (error) {
+      console.error('Error al cargar lista de usuarios para auditor:', error.message);
+    }
+  };
 
   const fetchUserProfile = async (userId) => {
     const { data, error } = await supabase
