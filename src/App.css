@@ -192,42 +192,42 @@
   100% { background-position: 1000px 0; }
 }
 
-@keyframes woodstockLoopMedium {
+@keyframes woodstockLoopProportional {
   0% {
     left: -15%;
     top: 25%;
-    transform: scale(2, 2) translateY(0px) rotate(-3deg);
+    transform: scale(3, 3) translateY(0px) rotate(-3deg);
   }
   25% {
     left: 35%;
     top: 15%;
-    transform: scale(2, 2) translateY(-12px) rotate(5deg);
+    transform: scale(3, 3) translateY(-15px) rotate(5deg);
   }
   48% {
     left: 85%;
     top: 28%;
-    transform: scale(2, 2) translateY(8px) rotate(-4deg);
+    transform: scale(3, 3) translateY(10px) rotate(-4deg);
   }
   49% {
-    /* Giro en espejo manteniendo proporción 2x */
+    /* Giro en espejo manteniendo la proporción vertical intacta */
     left: 85%;
     top: 28%;
-    transform: scale(-2, 2) translateY(8px) rotate(4deg);
+    transform: scale(-3, 3) translateY(10px) rotate(4deg);
   }
   75% {
     left: 40%;
     top: 35%;
-    transform: scale(-2, 2) translateY(-8px) rotate(-5deg);
+    transform: scale(-3, 3) translateY(-10px) rotate(-5deg);
   }
   99% {
     left: -15%;
     top: 25%;
-    transform: scale(-2, 2) translateY(0px) rotate(3deg);
+    transform: scale(-3, 3) translateY(0px) rotate(3deg);
   }
   100% {
     left: -15%;
     top: 25%;
-    transform: scale(2, 2) translateY(0px) rotate(-3deg);
+    transform: scale(3, 3) translateY(0px) rotate(-3deg);
   }
 }
 
@@ -248,9 +248,9 @@
   animation: slideClouds 30s linear infinite;
 }
 
-.animate-woodstock-loop-medium {
+.animate-woodstock-loop-proportional {
   position: absolute;
-  animation: woodstockLoopMedium 14s ease-in-out infinite !important;
+  animation: woodstockLoopProportional 14s ease-in-out infinite !important;
 }
 
 .animate-sparkle-1 {
