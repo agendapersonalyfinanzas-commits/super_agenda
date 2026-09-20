@@ -110,8 +110,8 @@ export default function DashboardHeader({
           </div>
         </div>
 
-        {/* CAPA 2: Destellos de luz / Rayos solares posicionados más arriba detrás de la agenda */}
-        <div className="absolute top-[-12%] left-[24%] sm:top-[-10%] sm:left-[27%] z-20 pointer-events-none flex items-center justify-center">
+        {/* CAPA 2: Rayos solares con posición independiente para celular (izq) y desktop (sm:izq) */}
+        <div className="absolute top-[-12%] left-[16%] sm:top-[-10%] sm:left-[27%] z-20 pointer-events-none flex items-center justify-center">
           <div className="relative w-48 h-48 sm:w-56 sm:h-56 flex items-center justify-center">
             {/* Rayos giratorios */}
             <div className="absolute inset-0 animate-spin-slow opacity-95">
