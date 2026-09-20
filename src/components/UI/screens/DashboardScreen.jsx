@@ -35,10 +35,32 @@ const PRESET_ICONS = [
   '/finanzas.png',
   '/franklin-internet.png',
   '/gastos-medicos.png',
+  '/joe-cool-woodstock.png',
+  '/joe-linus.png',
+  '/joe-marcie.png',
+  '/joe-pepermint.png',
+  '/joe-pigpen.png',
+  '/joe-schoader.png',
+  '/joe-snoopy.png',
+  '/joe-woodstock.png',
+  '/juego-baron-rojo.png',
+  '/juego-franklin.png',
+  '/juego-linus.png',
+  '/juego-paty.png',
+  '/juego-pigpen.png',
+  '/juego-sally.png',
+  '/juego-schroader.png',
+  '/juego-snoopy-rojo-1.png',
+  '/juego-woodstock-piloto.png',
+  '/juego-woodstock.png',
+  '/juegol-linus.png',
   '/linus-cfe.png',
   '/linus-dulces.png',
   '/lucy-analytics.png',
+  '/lucy-colegiatura.png',
   '/lucy-secretaria.png',
+  '/marcia-cita-medica.png',
+  '/metricas.png',
   '/paty-telcel.png',
   '/schroeder-limonada.png',
   '/snoopy-caev.png',
@@ -115,6 +137,26 @@ export default function DashboardScreen() {
 
   // --- 3. HOOK DE BOTONERA RÁPIDA ---
   const quickActionsManager = useQuickActionsManager();
+
+  // 🌟 Escuchar actualizaciones en tiempo real de abonos a metas para refrescar el balance y lista global al instante
+  useEffect(() => {
+    const handleTransactionUpdate = () => {
+      if (typeof txManager.fetchTransactions === 'function') {
+        txManager.fetchTransactions();
+      } else if (typeof txManager.loadTransactions === 'function') {
+        txManager.loadTransactions();
+      } else if (typeof txManager.refresh === 'function') {
+        txManager.refresh();
+      } else {
+        window.location.reload();
+      }
+    };
+
+    window.addEventListener('transaction-updated', handleTransactionUpdate);
+    return () => {
+      window.removeEventListener('transaction-updated', handleTransactionUpdate);
+    };
+  }, [txManager]);
 
   // Obtener usuario autenticado de Supabase y cargar lista de perfiles si es auditor
   useEffect(() => {

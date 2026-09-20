@@ -3,7 +3,7 @@ import { formatearMoneda } from '../../utils/moneda.js';
 import PDFPreviewModal from './PDFPreviewModal.jsx';
 
 export default function RecentTransactions({ transactions = [], onDelete, onUpdate }) {
-  const [filter, setFilter] = useState('all'); // 'all' | 'expense' | 'income'
+  const [filter, setFilter] = useState('all'); // 'all' | 'expense' | 'income' | 'savings'
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   // Estados Modal Edición
@@ -31,7 +31,6 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
     const parsedAmount = Number(editAmount);
     
     if (!isNaN(parsedAmount) && parsedAmount > 0 && onUpdate && editTx) {
-      // Pasamos un objeto con todos los datos editables para que el componente padre lo actualice
       onUpdate(editTx.id, {
         amount: parsedAmount,
         concept: editConcept.toUpperCase(),
@@ -56,10 +55,15 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
 
   // Filtrar transacciones según la pestaña seleccionada
   const filteredTransactions = transactions.filter((tx) => {
-    if (filter === 'expense') return tx.transaction_type === 'expense';
-    if (filter === 'income') return tx.transaction_type === 'income';
+    const isSavings = tx.category === 'AHORRO' || tx.concept?.includes('Abono a meta');
+    if (filter === 'expense') return !isSavings && tx.transaction_type === 'expense';
+    if (filter === 'income') return !isSavings && tx.transaction_type === 'income';
+    if (filter === 'savings') return isSavings;
     return true; // 'all'
   });
+
+  // 🌟 Calcular la suma total de los movimientos filtrados actuales
+  const totalFilteredAmount = filteredTransactions.reduce((acc, tx) => acc + Number(tx.amount || 0), 0);
 
   if (!transactions || transactions.length === 0) {
     return null;
@@ -69,13 +73,13 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
     <>
       <div className="border-4 border-black bg-white p-5 rounded-3xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-4 font-mono">
         
-        {/* CABECERA CON TÍTULO LIMPIO Y BOTÓN DE PDF QUE ABRE EL ZOOM */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b-2 border-black pb-3">
+        {/* CABECERA CON TÍTULO Y BOTONES DE FILTRO */}
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3 border-b-2 border-black pb-3">
           <div>
             <h3 className="text-xs font-black uppercase text-black">🕒 Historial Últimos Movimientos</h3>
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+          <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-between lg:justify-end">
             {/* Botón que abre la vista previa con Zoom */}
             <button
               type="button"
@@ -87,7 +91,7 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
             </button>
 
             {/* Botones de filtro rápido */}
-            <div className="flex items-center gap-1 bg-stone-100 p-1 border-2 border-black rounded-2xl">
+            <div className="flex items-center gap-1 bg-stone-100 p-1 border-2 border-black rounded-2xl flex-wrap">
               <button
                 type="button"
                 onClick={() => setFilter('all')}
@@ -96,6 +100,15 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
                 }`}
               >
                 Todos
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilter('savings')}
+                className={`px-2 py-1 text-[10px] font-black uppercase rounded-xl transition-all cursor-pointer ${
+                  filter === 'savings' ? 'bg-blue-500 text-white shadow' : 'bg-transparent text-blue-700 hover:bg-blue-100'
+                }`}
+              >
+                🔵 Ahorros
               </button>
               <button
                 type="button"
@@ -119,6 +132,21 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
           </div>
         </div>
 
+        {/* 🌟 BARRA DE SUMA TOTAL SEGÚN EL FILTRO SELECCIONADO */}
+        <div className={`p-3 border-2 border-black rounded-2xl flex justify-between items-center text-xs font-black uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${
+          filter === 'savings' ? 'bg-blue-100 text-blue-950' :
+          filter === 'expense' ? 'bg-rose-100 text-rose-950' :
+          filter === 'income' ? 'bg-emerald-100 text-emerald-950' :
+          'bg-amber-100 text-black'
+        }`}>
+          <span>
+            Total ({filter === 'all' ? 'General' : filter === 'savings' ? 'Ahorros' : filter === 'expense' ? 'Egresos' : 'Ingresos'}):
+          </span>
+          <span className="text-sm font-black">
+            {formatearMoneda(totalFilteredAmount)}
+          </span>
+        </div>
+
         {/* LISTA DE MOVIMIENTOS */}
         <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
           {filteredTransactions.length === 0 ? (
@@ -128,17 +156,30 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
           ) : (
             filteredTransactions.slice(0, 10).map((tx) => {
               const isIncome = tx.transaction_type === 'income';
+              const isSavings = tx.category === 'AHORRO' || tx.concept?.includes('Abono a meta');
               
+              let dotColor = 'bg-rose-500';
+              let bgColorClass = 'bg-rose-500/10';
+              let textColorClass = 'text-rose-700';
+
+              if (isSavings) {
+                dotColor = 'bg-blue-500';
+                bgColorClass = 'bg-blue-500/10';
+                textColorClass = 'text-blue-700';
+              } else if (isIncome) {
+                dotColor = 'bg-emerald-500';
+                bgColorClass = 'bg-emerald-500/10';
+                textColorClass = 'text-emerald-700';
+              }
+
               return (
                 <div 
                   key={tx.id} 
-                  className={`flex items-center justify-between p-3 border-2 border-black rounded-2xl shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] text-xs transition-all ${
-                    isIncome ? 'bg-emerald-500/10' : 'bg-rose-500/10'
-                  }`}
+                  className={`flex items-center justify-between p-3 border-2 border-black rounded-2xl shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] text-xs transition-all ${bgColorClass}`}
                 >
                   <div className="space-y-0.5">
                     <div className="flex items-center gap-1.5">
-                      <span className={`w-2 h-2 rounded-full border border-black ${isIncome ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                      <span className={`w-2.5 h-2.5 rounded-full border border-black ${dotColor}`} />
                       <span className="font-black uppercase block text-black">{tx.concept || tx.category}</span>
                     </div>
                     <span className="text-[10px] text-stone-600 font-bold">
@@ -147,7 +188,7 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <span className={`font-black text-sm ${isIncome ? 'text-emerald-700' : 'text-rose-700'}`}>
+                    <span className={`font-black text-sm ${textColorClass}`}>
                       {isIncome ? '+' : '-'}{formatearMoneda(tx.amount)}
                     </span>
 
@@ -183,9 +224,7 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
         transactions={filteredTransactions}
       />
 
-      {/* =========================================
-          MODAL EDICIÓN DE MOVIMIENTO (Estilo Peanuts)
-          ========================================= */}
+      {/* MODAL EDICIÓN */}
       {editModalOpen && editTx && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm font-mono">
           <div className="bg-amber-100 border-4 border-black p-6 rounded-3xl w-full max-w-sm shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] animate-bounce-short">
@@ -248,9 +287,7 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
         </div>
       )}
 
-      {/* =========================================
-          MODAL CONFIRMACIÓN ELIMINAR
-          ========================================= */}
+      {/* MODAL ELIMINAR */}
       {deleteModalOpen && txToDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm font-mono">
           <div className="bg-rose-100 border-4 border-black p-6 rounded-3xl w-full max-w-sm shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] animate-bounce-short">

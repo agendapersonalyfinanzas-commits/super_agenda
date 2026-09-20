@@ -1,12 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
+import MetaCardItem from './MetaCardItem';
 
 export default function MetasAhorroSeccion({ activeUser }) {
   const [metas, setMetas] = useState([]);
   const [loading, setLoading] = useState(true);
+  
+  // Estados para formulario de nueva meta
   const [nuevoTitulo, setNuevoTitulo] = useState('');
   const [nuevoMonto, setNuevoMonto] = useState('');
-  const [montoAbono, setMontoAbono] = useState({});
+  const [nuevaFecha, setNuevaFecha] = useState('');
+  const [nuevoIcon, setNuevoIcon] = useState('🎯');
+  
+  // Estados para alertas de retroalimentación visual (Feedback UX)
+  const [mensajeExito, setMensajeExito] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+  
+  // Estado para filtro de visualización
+  const [filtroEstado, setFiltroEstado] = useState('todas'); // 'todas', 'activas', 'completadas'
+
+  const iconosDisponibles = ['🎯', '🚗', '🏠', '✈️', '💻', '🎓', '🛠️', '💰', '🏆', '🐶'];
 
   useEffect(() => {
     if (activeUser) {
@@ -18,9 +31,9 @@ export default function MetasAhorroSeccion({ activeUser }) {
     try {
       setLoading(true);
       const { data, error } = await supabase
-        .from('savings_goals') // Tabla técnica original
+        .from('savings_goals')
         .select('*')
-        .eq('player_id', activeUser) // Columna técnica original
+        .eq('player_id', activeUser)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -36,183 +49,189 @@ export default function MetasAhorroSeccion({ activeUser }) {
     e.preventDefault();
     if (!nuevoTitulo.trim() || !nuevoMonto) return;
 
+    const montoNum = parseFloat(nuevoMonto);
+    setMensajeExito('');
+    setErrorMsg('');
+
     try {
       const { error } = await supabase
         .from('savings_goals')
         .insert([
           { 
-            titulo: nuevoTitulo.trim(), 
-            monto_objetivo: parseFloat(nuevoMonto), 
-            monto_actual: 0, 
+            goal_name: nuevoTitulo.trim(),
+            target_amount: montoNum,
+            current_amount: 0,
+            fecha_limite: nuevaFecha || null,
+            icon: nuevoIcon,
             player_id: activeUser 
           }
         ]);
 
       if (error) throw error;
 
+      // Activar alerta visual de éxito
+      setMensajeExito('🎉 ¡Meta creada y guardada con éxito en la base de datos!');
+
+      // Limpiar formulario
       setNuevoTitulo('');
       setNuevoMonto('');
+      setNuevaFecha('');
+      setNuevoIcon('🎯');
       fetchMetas();
+
+      // Ocultar alerta automáticamente después de 4 segundos
+      setTimeout(() => {
+        setMensajeExito('');
+      }, 4000);
+
     } catch (error) {
       console.error('Error al crear la meta:', error.message);
+      setErrorMsg(`❌ No se pudo guardar: ${error.message}`);
     }
   };
 
-  const handleAbonar = async (metaId, montoActualActual) => {
-    const abono = parseFloat(montoAbono[metaId]);
-    if (!abono || isNaN(abono) || abono <= 0) return;
+  // Filtrar metas según estado
+  const metasFiltradas = metas.filter((meta) => {
+    const actual = parseFloat(meta.current_amount || 0);
+    const objetivo = parseFloat(meta.target_amount || 1);
+    const isCompleted = actual >= objetivo;
 
-    const nuevoTotal = parseFloat(montoActualActual) + abono;
-
-    try {
-      const { error } = await supabase
-        .from('savings_goals')
-        .update({ monto_actual: nuevoTotal })
-        .eq('id', metaId);
-
-      if (error) throw error;
-
-      setMontoAbono({ ...montoAbono, [metaId]: '' });
-      fetchMetas();
-    } catch (error) {
-      console.error('Error al abonar a la meta:', error.message);
-    }
-  };
-
-  const handleDeleteMeta = async (metaId) => {
-    if (!window.confirm('¿Estás seguro de eliminar esta meta u objetivo de ahorro?')) return;
-
-    try {
-      const { error } = await supabase
-        .from('savings_goals')
-        .delete()
-        .eq('id', metaId);
-
-      if (error) throw error;
-      fetchMetas();
-    } catch (error) {
-      console.error('Error al eliminar la meta:', error.message);
-    }
-  };
+    if (filtroEstado === 'activas') return !isCompleted;
+    if (filtroEstado === 'completadas') return isCompleted;
+    return true;
+  });
 
   return (
-    <div className="bg-[#FEF08A] border-4 border-black rounded-3xl p-4 sm:p-5 shadow-[6px_6px_0px_rgba(0,0,0,1)] w-full flex flex-col gap-4 select-none">
+    <div className="bg-[#FEF08A] border-4 border-black rounded-3xl p-4 sm:p-6 shadow-[6px_6px_0px_rgba(0,0,0,1)] w-full flex flex-col gap-5 select-none">
       
-      {/* Título de la sección */}
-      <div className="flex items-center justify-between border-b-2 border-black pb-2">
-        <div className="flex items-center gap-2">
-          <span className="text-xl">🎯</span>
-          <h2 className="font-black text-sm sm:text-base uppercase tracking-wider text-black">Metas / Ahorro</h2>
+      {/* Encabezado */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b-2 border-black pb-3 gap-3">
+        <div className="flex items-center gap-2.5">
+          <span className="text-2xl">🎯</span>
+          <div>
+            <h2 className="font-black text-base sm:text-lg uppercase tracking-wider text-black">Metas y Ahorros</h2>
+            <p className="text-[10px] font-mono uppercase text-gray-700">Gestiona tus fondos y plazos financieros</p>
+          </div>
         </div>
-        <span className="bg-white border-2 border-black px-2.5 py-0.5 rounded-full font-mono font-black text-xs shadow-[2px_2px_0px_rgba(0,0,0,1)]">
-          {metas.length} Activas
-        </span>
+        
+        {/* Filtros de visualización */}
+        <div className="flex items-center gap-1.5 bg-white border-2 border-black p-1 rounded-2xl shadow-[2px_2px_0px_rgba(0,0,0,1)]">
+          <button 
+            type="button"
+            onClick={() => setFiltroEstado('todas')}
+            className={`px-2.5 py-1 text-[10px] font-black uppercase rounded-xl transition-all cursor-pointer ${filtroEstado === 'todas' ? 'bg-yellow-300 border border-black shadow-[1px_1px_0px_rgba(0,0,0,1)]' : 'hover:bg-gray-100'}`}
+          >
+            Todas ({metas.length})
+          </button>
+          <button 
+            type="button"
+            onClick={() => setFiltroEstado('activas')}
+            className={`px-2.5 py-1 text-[10px] font-black uppercase rounded-xl transition-all cursor-pointer ${filtroEstado === 'activas' ? 'bg-yellow-300 border border-black shadow-[1px_1px_0px_rgba(0,0,0,1)]' : 'hover:bg-gray-100'}`}
+          >
+            Activas
+          </button>
+          <button 
+            type="button"
+            onClick={() => setFiltroEstado('completadas')}
+            className={`px-2.5 py-1 text-[10px] font-black uppercase rounded-xl transition-all cursor-pointer ${filtroEstado === 'completadas' ? 'bg-green-300 border border-black shadow-[1px_1px_0px_rgba(0,0,0,1)]' : 'hover:bg-gray-100'}`}
+          >
+            Logradas
+          </button>
+        </div>
       </div>
 
-      {/* Formulario para nueva meta */}
-      <form onSubmit={handleCreateMeta} className="bg-white border-[3px] border-black rounded-2xl p-3 shadow-[4px_4px_0px_rgba(0,0,0,1)] flex flex-col sm:flex-row gap-2.5">
-        <input 
-          type="text" 
-          placeholder="Nombre de la meta / ahorro (Ej. Viaje, Fondo)" 
-          value={nuevoTitulo}
-          onChange={(e) => setNuevoTitulo(e.target.value)}
-          className="flex-1 border-2 border-black rounded-xl px-3 py-2 text-xs font-bold uppercase bg-gray-50 focus:outline-none focus:ring-2 focus:ring-yellow-400"
-        />
-        <input 
-          type="number" 
-          placeholder="Monto objetivo ($)" 
-          value={nuevoMonto}
-          onChange={(e) => setNuevoMonto(e.target.value)}
-          className="w-full sm:w-36 border-2 border-black rounded-xl px-3 py-2 text-xs font-bold uppercase bg-gray-50 focus:outline-none focus:ring-2 focus:ring-yellow-400"
-        />
-        <button 
-          type="submit"
-          className="bg-[#38BDF8] border-2 border-black rounded-xl px-4 py-2 font-black text-xs uppercase shadow-[2px_2px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all cursor-pointer hover:bg-sky-300"
-        >
-          Crear Meta
-        </button>
-      </form>
+      {/* Formulario para Crear Meta */}
+      <form onSubmit={handleCreateMeta} className="bg-white border-[3px] border-black rounded-2xl p-4 shadow-[4px_4px_0px_rgba(0,0,0,1)] flex flex-col gap-3">
+        
+        {/* Alerta de Éxito */}
+        {mensajeExito && (
+          <div className="bg-green-300 border-2 border-black rounded-xl p-2.5 text-xs font-black uppercase tracking-wide text-black shadow-[2px_2px_0px_rgba(0,0,0,1)] flex items-center justify-between">
+            <span>{mensajeExito}</span>
+            <button type="button" onClick={() => setMensajeExito('')} className="cursor-pointer font-bold px-1.5 py-0.5 rounded-lg hover:bg-green-400">✕</button>
+          </div>
+        )}
 
-      {/* Listado de Metas / Ahorros */}
-      {loading ? (
-        <div className="text-center py-6 font-mono font-black text-xs uppercase animate-pulse">
-          Cargando metas y ahorros...
-        </div>
-      ) : metas.length === 0 ? (
-        <div className="bg-white/60 border-2 border-dashed border-black rounded-2xl p-6 text-center">
-          <p className="font-bold text-xs uppercase text-gray-700">No tienes metas o ahorros registrados todavía.</p>
-          <p className="text-[10px] font-mono text-gray-500 mt-1">¡Crea una arriba para comenzar a acumular fondos!</p>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {metas.map((meta) => {
-            const porcentaje = Math.min(Math.round((meta.monto_actual / meta.monto_objetivo) * 100), 100);
-            const isCompleted = porcentaje >= 100;
+        {/* Alerta de Error */}
+        {errorMsg && (
+          <div className="bg-red-300 border-2 border-black rounded-xl p-2.5 text-xs font-black uppercase tracking-wide text-black shadow-[2px_2px_0px_rgba(0,0,0,1)] flex items-center justify-between">
+            <span>{errorMsg}</span>
+            <button type="button" onClick={() => setErrorMsg('')} className="cursor-pointer font-bold px-1.5 py-0.5 rounded-lg hover:bg-red-400">✕</button>
+          </div>
+        )}
 
-            return (
-              <div 
-                key={meta.id} 
-                className={`border-[3px] border-black rounded-2xl p-3.5 shadow-[4px_4px_0px_rgba(0,0,0,1)] transition-all ${
-                  isCompleted ? 'bg-green-100' : 'bg-white'
+        <div className="flex flex-col sm:flex-row gap-2.5">
+          <input 
+            type="text" 
+            placeholder="Nombre de la meta (Ej. Viaje, Fondo de emergencia)" 
+            value={nuevoTitulo}
+            onChange={(e) => setNuevoTitulo(e.target.value)}
+            className="flex-1 border-2 border-black rounded-xl px-3 py-2 text-xs font-bold uppercase bg-gray-50 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+          />
+          <input 
+            type="number" 
+            placeholder="Monto objetivo ($)" 
+            value={nuevoMonto}
+            onChange={(e) => setNuevoMonto(e.target.value)}
+            className="w-full sm:w-36 border-2 border-black rounded-xl px-3 py-2 text-xs font-bold uppercase bg-gray-50 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+          />
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 border-t border-black/10">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <span className="text-[11px] font-black uppercase font-mono">Plazo / Fecha:</span>
+            <input 
+              type="date" 
+              value={nuevaFecha}
+              onChange={(e) => setNuevaFecha(e.target.value)}
+              className="border-2 border-black rounded-xl px-2 py-1 text-xs font-bold bg-gray-50 focus:outline-none"
+            />
+          </div>
+
+          <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
+            <span className="text-[11px] font-black uppercase font-mono mr-1">Icono:</span>
+            {iconosDisponibles.map((icon) => (
+              <button
+                key={icon}
+                type="button"
+                onClick={() => setNuevoIcon(icon)}
+                className={`w-7 h-7 flex items-center justify-center rounded-lg border-2 border-black text-sm cursor-pointer transition-all ${
+                  nuevoIcon === icon ? 'bg-yellow-300 scale-110 shadow-[2px_2px_0px_rgba(0,0,0,1)]' : 'bg-gray-50 hover:bg-gray-100'
                 }`}
               >
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">{isCompleted ? '🏆' : '🎯'}</span>
-                    <span className="font-black text-xs sm:text-sm uppercase">{meta.titulo}</span>
-                  </div>
-                  <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
-                    <span className="font-mono font-black text-xs">
-                      ${Number(meta.monto_actual).toLocaleString()} /${Number(meta.monto_objetivo).toLocaleString()}
-                    </span>
-                    <button 
-                      type="button"
-                      onClick={() => handleDeleteMeta(meta.id)}
-                      className="text-red-600 hover:text-red-800 font-bold text-xs px-1.5 py-0.5 border border-black rounded bg-white hover:bg-red-50 cursor-pointer"
-                      title="Eliminar meta"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
+                {icon}
+              </button>
+            ))}
+          </div>
 
-                {/* Barra de Progreso */}
-                <div className="w-full bg-gray-200 border-2 border-black rounded-full h-3.5 overflow-hidden mb-2.5 relative">
-                  <div 
-                    className={`h-full border-r-2 border-black transition-all duration-500 ${
-                      isCompleted ? 'bg-green-400' : 'bg-[#FBBF24]'
-                    }`}
-                    style={{ width: `${porcentaje}%` }}
-                  ></div>
-                </div>
+          <button 
+            type="submit"
+            className="w-full sm:w-auto bg-[#38BDF8] border-2 border-black rounded-xl px-5 py-2 font-black text-xs uppercase shadow-[2px_2px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all cursor-pointer hover:bg-sky-300"
+          >
+            + Crear Meta
+          </button>
+        </div>
+      </form>
 
-                {/* Pie de tarjeta: Porcentaje e Input para Abonar */}
-                <div className="flex flex-col sm:flex-row justify-between items-center gap-2 pt-1 border-t border-black/10">
-                  <span className="font-mono font-black text-[11px] uppercase">
-                    {isCompleted ? '¡Meta cumplida! 🎉' : `Progreso: ${porcentaje}%`}
-                  </span>
-
-                  <div className="flex items-center gap-1.5 w-full sm:w-auto">
-                    <input 
-                      type="number"
-                      placeholder="+ Monto"
-                      value={montoAbono[meta.id] || ''}
-                      onChange={(e) => setMontoAbono({ ...montoAbono, [meta.id]: e.target.value })}
-                      className="w-full sm:w-24 border-2 border-black rounded-xl px-2 py-1 text-[11px] font-bold bg-gray-50 focus:outline-none"
-                    />
-                    <button 
-                      type="button"
-                      onClick={() => handleAbonar(meta.id, meta.monto_actual)}
-                      className="bg-green-300 border-2 border-black rounded-xl px-3 py-1 font-black text-[11px] uppercase shadow-[2px_2px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none cursor-pointer whitespace-nowrap hover:bg-green-400"
-                    >
-                      Abonar
-                    </button>
-                  </div>
-                </div>
-
-              </div>
-            );
-          })}
+      {/* Lista de Metas */}
+      {loading ? (
+        <div className="text-center py-8 font-mono font-black text-xs uppercase animate-pulse">
+          Cargando metas y ahorros...
+        </div>
+      ) : metasFiltradas.length === 0 ? (
+        <div className="bg-white/60 border-2 border-dashed border-black rounded-2xl p-8 text-center">
+          <p className="font-bold text-xs uppercase text-gray-700">No hay metas registradas en esta vista.</p>
+          <p className="text-[10px] font-mono text-gray-500 mt-1">¡Crea un nuevo objetivo arriba para comenzar a acumular fondos!</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3.5">
+          {metasFiltradas.map((meta) => (
+            <MetaCardItem 
+              key={meta.id} 
+              meta={meta} 
+              activeUser={activeUser} 
+              onUpdate={fetchMetas} 
+            />
+          ))}
         </div>
       )}
 

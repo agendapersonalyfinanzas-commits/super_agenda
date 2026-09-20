@@ -1,5 +1,4 @@
 import React, { useRef, useState } from 'react';
-import { PRESET_MAP } from '../UI/Icons';
 
 // Corrección de ruta: 2 niveles arriba (../../utils)
 import { manejarInputMayusculas } from '../../utils/mayusculas.js';
@@ -8,14 +7,15 @@ export default function EditImageModal({ onClose, currentLabel, onSaveConfig }) 
   const fileInputRef = useRef(null);
   const [newLabel, setNewLabel] = useState(currentLabel || '');
 
+  // Lista con los nombres de archivos reales y existentes en la carpeta public
   const presets = [
-    { name: 'Súper Charlie', key: 'charlie-market' },
-    { name: 'Reparaciones Snoopy', key: 'snoopy-repair' },
-    { name: 'Comidas Snoopy', key: 'snoopy-food' },
-    { name: 'Viajes Woodstock', key: 'woodstock-travel' },
-    { name: 'Gasolina Snoopy', key: 'gasolina' },
-    { name: 'Snoopy Héroe', key: 'super-snoopy' },
-    { name: 'Lucy Contable', key: 'lucy-analytics' }
+    { name: 'Súper Charlie', path: '/charlie-market.png' },
+    { name: 'Reparaciones', path: '/snoopy-repair.png' },
+    { name: 'Comidas Snoopy', path: '/snoopy-food.png' },
+    { name: 'Viajes Woodstock', path: '/woodstock-travel.png' },
+    { name: 'Gasolina', path: '/snoopy-gasolina.png' },
+    { name: 'Joe Snoopy', path: '/joe-snoopy.png' },
+    { name: 'Lucy Contable', path: '/lucy-analytics.png' }
   ];
 
   const handleFileChange = (e) => {
@@ -24,7 +24,6 @@ export default function EditImageModal({ onClose, currentLabel, onSaveConfig }) 
       const reader = new FileReader();
       reader.onloadend = () => {
         if (reader.result) {
-          // CORREGIDO: Enviamos 'icon' para que DashboardScreen lo guarde en Supabase
           onSaveConfig({ label: newLabel, icon: reader.result });
         }
       };
@@ -86,18 +85,17 @@ export default function EditImageModal({ onClose, currentLabel, onSaveConfig }) 
                 key={idx}
                 type="button"
                 onClick={() => {
-                  const iconUrl = PRESET_MAP[preset.key] || `/${preset.key}.png`;
-                  // CORREGIDO: Enviamos la URL resuelta en 'icon'
-                  onSaveConfig({ label: newLabel, icon: iconUrl });
+                  onSaveConfig({ label: newLabel, icon: preset.path });
                 }}
                 className="flex flex-col items-center p-2 border-2 border-black rounded-xl bg-stone-50 hover:bg-amber-100 transition-colors cursor-pointer"
               >
                 <div className="w-10 h-10 overflow-hidden rounded-full border border-black bg-white flex items-center justify-center">
-                  {PRESET_MAP[preset.key] ? (
-                    <img src={PRESET_MAP[preset.key]} alt="Img" className="w-full h-full object-cover scale-125 pointer-events-none" />
-                  ) : (
-                    <span className="text-xs font-black">⭐</span>
-                  )}
+                  <img 
+                    src={preset.path} 
+                    alt={preset.name} 
+                    className="w-full h-full object-cover scale-125 pointer-events-none"
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                  />
                 </div>
                 <span className="text-[9px] font-bold text-center mt-1 text-black block truncate w-full uppercase">{preset.name}</span>
               </button>
