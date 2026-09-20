@@ -248,7 +248,7 @@ export default function App() {
       
       <header className="bg-white border-b-4 border-black p-4 flex justify-between items-center px-6">
         <div className="text-xs font-black uppercase tracking-wider">
-          ⭐ ¡BIENVENIDO, <span className="text-amber-600 underline">{user_name || 'SUPER USUARIO'}</span>!
+          ⭐ ¡BIENVENIDO, <span className="text-amber-600 underline">{user_name || session?.user?.email || 'USUARIO'}</span>!
         </div>
       </header>
 
@@ -259,7 +259,7 @@ export default function App() {
         {activeTab === 'metrics' && <AnalyticsScreen />}
         {activeTab === 'games' && (
           <GameScreen 
-            activeUser={user_name || 'Snoopy'}
+            activeUser={user_name || session?.user?.email || 'Snoopy'}
             selectedGame={selectedGame}
             setSelectedGame={setSelectedGame}
             onBack={() => {
