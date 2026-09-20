@@ -5,7 +5,6 @@ export default function DashboardHeader({
   user_name, 
   activeUser, 
   onOcrOpen,
-  // 🌟 Props para el Modo Dios / Auditor
   isAuditor = false,
   usersList = [],
   selectedAuditedUser = null,
@@ -30,6 +29,18 @@ export default function DashboardHeader({
     hour12: true
   });
 
+  // Encontrar el nombre completo del usuario auditado actual
+  const getAuditedUserFullName = () => {
+    if (!selectedAuditedUser) return null;
+    const found = usersList.find(u => u.id === selectedAuditedUser);
+    if (found) {
+      return `${found.nombre || ''} ${found.apellido_paterno || ''} ${found.apellido_materno || ''}`.trim();
+    }
+    return selectedAuditedUser;
+  };
+
+  const auditedName = getAuditedUserFullName();
+
   return (
     <div className="bg-[#FBBF24] border-4 border-black rounded-3xl p-3 sm:p-4 shadow-[6px_6px_0px_rgba(0,0,0,1)] flex flex-col gap-3 select-none w-full">
       
@@ -46,7 +57,6 @@ export default function DashboardHeader({
             transform: translate(68vw, 10px) scale(0.5) rotate(-4deg);
           }
           50% {
-            /* Extremo derecho: punto de giro */
             transform: translate(72vw, 15px) scale(0.55) rotate(0deg);
           }
           75% {
@@ -63,26 +73,24 @@ export default function DashboardHeader({
           animation: woodstockErraticFlight 14s ease-in-out infinite;
         }
 
-        /* Giro suave y fluido pasando por scaleX(0) para simular la rotación de frente */
         @keyframes woodstockFlip {
           0%, 46% { 
             transform: scaleX(1); 
           }
           50% { 
-            transform: scaleX(0); /* Transición en el extremo derecho */
+            transform: scaleX(0); 
           }
           54%, 96% { 
             transform: scaleX(-1); 
           }
           100% { 
-            transform: scaleX(1); /* Transición en el extremo izquierdo */
+            transform: scaleX(1); 
           }
         }
         .woodstock-img-flip {
           animation: woodstockFlip 14s ease-in-out infinite;
         }
 
-        /* Rotación lenta para los rayos de sol de la libreta */
         @keyframes spinSlow {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
@@ -95,10 +103,8 @@ export default function DashboardHeader({
       {/* CONTENEDOR VISUAL PRINCIPAL */}
       <div className="w-full h-56 sm:h-64 relative rounded-2xl overflow-hidden border-2 border-black bg-[#38BDF8] flex items-center justify-center">
         
-        {/* CAPA 0: Fondo con nubes animadas */}
         <div className="absolute inset-0 z-0 animate-clouds-loop opacity-85 pointer-events-none"></div>
 
-        {/* CAPA 1: Woodstock piloto con vuelo frontal y giro suave */}
         <div className="absolute inset-0 z-10 pointer-events-none overflow-hidden flex items-center">
           <div className="woodstock-erratic-animation absolute left-2 flex items-center">
             <img 
@@ -110,10 +116,8 @@ export default function DashboardHeader({
           </div>
         </div>
 
-        {/* CAPA 2: Rayos solares posicionados más a la izquierda y más arriba */}
         <div className="absolute top-[-18%] left-[1%] sm:top-[-15%] sm:left-[22%] z-20 pointer-events-none flex items-center justify-center">
           <div className="relative w-48 h-48 sm:w-56 sm:h-56 flex items-center justify-center">
-            {/* Rayos giratorios */}
             <div className="absolute inset-0 animate-spin-slow opacity-95">
               <svg viewBox="0 0 100 100" className="w-full h-full fill-yellow-300 drop-shadow-[0_0_14px_rgba(253,224,71,1)]">
                 <path d="M50 0 L54 35 L50 50 L46 35 Z" transform="rotate(0 50 50)" />
@@ -130,12 +134,10 @@ export default function DashboardHeader({
                 <path d="M50 0 L54 35 L50 50 L46 35 Z" transform="rotate(330 50 50)" />
               </svg>
             </div>
-            {/* Núcleo central de brillo */}
             <div className="absolute w-20 h-20 bg-white rounded-full blur-sm opacity-90 animate-pulse"></div>
           </div>
         </div>
 
-        {/* CAPA 3: Imagen principal de frente */}
         <img 
           src="/snoppy-ciudad-tranparente.png" 
           alt="Super Agenda Snoopy" 
@@ -174,6 +176,13 @@ export default function DashboardHeader({
           </div>
         )}
 
+        {/* 🌟 BANNER DE AVISO DE AUDITORÍA ACTIVA */}
+        {isAuditor && auditedName && (
+          <div className="bg-rose-400 border-[3px] border-black rounded-2xl py-2 px-3 text-center font-black text-xs uppercase shadow-[4px_4px_0px_rgba(0,0,0,1)] text-black animate-bounce">
+            🔍 AUDITANDO PERFIL DE: {auditedName}
+          </div>
+        )}
+
         {/* BOTÓN ESCANEAR TICKET */}
         <div className="flex justify-start w-full">
           <button 
@@ -186,21 +195,18 @@ export default function DashboardHeader({
           </button>
         </div>
 
-        {/* CONTENEDOR DE FECHA Y RELOJ EN FORMATO PÍLDORA CON OPACIDAD 35% */}
+        {/* CONTENEDOR DE FECHA Y RELOJ */}
         <div className="w-full bg-transparent py-1 px-1 flex items-center justify-between">
-          
-          {/* Fecha en píldora con bg-white/35 */}
           <div className="flex items-center gap-2 bg-white/35 px-3.5 py-1.5 rounded-full border-2 border-black shadow-[3px_3px_0px_rgba(0,0,0,1)]">
             <span className="text-base">📅</span>
             <span className="font-mono font-black text-xs sm:text-sm text-black tracking-wide">{formattedDate}</span>
           </div>
 
-          {/* Reloj en píldora con bg-white/35 */}
           <div className="font-mono font-black text-xs sm:text-sm text-black bg-white/35 px-3.5 py-1.5 rounded-full border-2 border-black shadow-[3px_3px_0px_rgba(0,0,0,1)]">
             {formattedTime}
           </div>
-
         </div>
+
       </div>
 
     </div>

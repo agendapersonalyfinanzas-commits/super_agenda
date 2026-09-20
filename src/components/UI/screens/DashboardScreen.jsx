@@ -17,6 +17,7 @@ import DashboardHeader from '../../Expenses/DashboardHeader';
 import AddCustomButtonModal from '../../Expenses/AddCustomButtonModal';
 import EditImageModal from '../../Expenses/EditImageModal';
 import OCRScanner from '../../Expenses/OCRScanner';
+import MetasAhorroSeccion from '../../Expenses/MetasAhorroSeccion';
 
 // Componentes UI modularizados
 import QuickActionGrid from '../QuickActionGrid.jsx';
@@ -66,18 +67,16 @@ export default function DashboardScreen() {
   // --- 1. HOOK DE JUGADORES ---
   const playerManager = usePlayerManagement();
 
-  // 🌟 Extraer de manera precisa la identidad, UUID o nombre del usuario a auditar
+  // 🌟 Extraer de manera precisa la identidad, UUID o nombre del usuario a auditar (para transacciones)
   const targetUserForTx = useMemo(() => {
     if (!auditorMode || !selectedAuditedUser) {
       return playerManager.activeUser;
     }
 
-    // Si selectedAuditedUser es un objeto completo de perfil (desde DashboardHeader)
     if (typeof selectedAuditedUser === 'object' && selectedAuditedUser !== null) {
       return selectedAuditedUser.id || selectedAuditedUser.nombre || selectedAuditedUser;
     }
 
-    // Si selectedAuditedUser viene como string (UUID o Nombre), busca en la lista de perfiles
     const foundUser = usersList.find(
       (u) => u.id === selectedAuditedUser || u.nombre === selectedAuditedUser
     );
@@ -88,6 +87,23 @@ export default function DashboardScreen() {
 
     return selectedAuditedUser;
   }, [auditorMode, selectedAuditedUser, playerManager.activeUser, usersList]);
+
+  // 🌟 Obtener de manera segura el UUID exacto para componentes que lo requieran (como MetasAhorroSeccion)
+  const targetUserIdForMetas = useMemo(() => {
+    if (!auditorMode || !selectedAuditedUser) {
+      return currentUser?.id || '';
+    }
+
+    if (typeof selectedAuditedUser === 'object' && selectedAuditedUser !== null) {
+      return selectedAuditedUser.id || currentUser?.id;
+    }
+
+    const foundUser = usersList.find(
+      (u) => u.id === selectedAuditedUser || u.nombre === selectedAuditedUser
+    );
+
+    return foundUser ? foundUser.id : currentUser?.id;
+  }, [auditorMode, selectedAuditedUser, currentUser, usersList]);
 
   // --- 2. HOOK DE TRANSACCIONES ---
   const txManager = useTransactionsManager(
@@ -108,11 +124,10 @@ export default function DashboardScreen() {
         if (user) {
           setCurrentUser(user);
 
-          // Si es el usuario Maestro/Auditor, traemos los perfiles reales desde Supabase
           if (user.email?.toLowerCase() === 'maestroluisricardo17@gmail.com') {
             const { data: profiles, error } = await supabase
               .from('profiles')
-              .select('id, nombre, apellido_paterno, apellido_materno'); // 👈 Consulta corregida (sin 'email')
+              .select('id, nombre, apellido_paterno, apellido_materno');
 
             if (error) {
               console.error('❌ Error al obtener perfiles de Supabase:', error.message);
@@ -232,7 +247,7 @@ export default function DashboardScreen() {
             </div>
           )}
 
-          {/* CABECERA (PASANDO LA LISTA REAL DE PROFILES Y USANDO ÚNICAMENTE auditorMode PARA CONTROLAR SU VISIBILIDAD) */}
+          {/* CABECERA */}
           <DashboardHeader 
             user_name={currentUser?.email} 
             activeUser={playerManager.activeUser} 
@@ -243,7 +258,17 @@ export default function DashboardScreen() {
             setSelectedAuditedUser={setSelectedAuditedUser}
           />
           
-          <PlayerControlPanel activeUser={playerManager.activeUser} />
+          {/* 🌟 PANEL DE CONTROL DINÁMICO (Muestra el usuario auditado o el tuyo por defecto) */}
+          <PlayerControlPanel 
+            activeUser={
+              auditorMode && selectedAuditedUser 
+                ? (() => {
+                    const found = usersList.find(u => u.id === selectedAuditedUser);
+                    return found ? `${found.nombre} ${found.apellido_paterno || ''}`.trim() : playerManager.activeUser;
+                  })()
+                : playerManager.activeUser
+            } 
+          />
 
           <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <GlobalBalanceCard 
@@ -309,6 +334,9 @@ export default function DashboardScreen() {
                   }
                 }}
               />
+
+              {/* 🎯 SECCIÓN DE METAS Y AHORRO */}
+              <MetasAhorroSeccion activeUser={targetUserIdForMetas} />
 
               <RecentTransactions 
                 transactions={txManager.recentTransactions}
