@@ -33,35 +33,105 @@ export default function DashboardHeader({
   return (
     <div className="bg-[#FBBF24] border-4 border-black rounded-3xl p-3 sm:p-4 shadow-[6px_6px_0px_rgba(0,0,0,1)] flex flex-col gap-3 select-none w-full">
       
+      {/* Estilos con vuelo frontal, giro suave y destellos de rayos solares */}
+      <style>{`
+        @keyframes woodstockErraticFlight {
+          0% {
+            transform: translate(0px, 15px) scale(0.9) rotate(0deg);
+          }
+          25% {
+            transform: translate(32vw, -25px) scale(1.3) rotate(4deg);
+          }
+          48% {
+            transform: translate(68vw, 10px) scale(0.5) rotate(-4deg);
+          }
+          50% {
+            /* Extremo derecho: punto de giro */
+            transform: translate(72vw, 15px) scale(0.55) rotate(0deg);
+          }
+          75% {
+            transform: translate(35vw, -20px) scale(1.2) rotate(-4deg);
+          }
+          95% {
+            transform: translate(8vw, 15px) scale(1.0) rotate(4deg);
+          }
+          100% {
+            transform: translate(0px, 15px) scale(0.9) rotate(0deg);
+          }
+        }
+        .woodstock-erratic-animation {
+          animation: woodstockErraticFlight 14s ease-in-out infinite;
+        }
+
+        /* Giro suave y fluido pasando por scaleX(0) para simular la rotación de frente */
+        @keyframes woodstockFlip {
+          0%, 46% { 
+            transform: scaleX(1); 
+          }
+          50% { 
+            transform: scaleX(0); /* Transición en el extremo derecho */
+          }
+          54%, 96% { 
+            transform: scaleX(-1); 
+          }
+          100% { 
+            transform: scaleX(1); /* Transición en el extremo izquierdo */
+          }
+        }
+        .woodstock-img-flip {
+          animation: woodstockFlip 14s ease-in-out infinite;
+        }
+
+        /* Rotación lenta para los rayos de sol de la libreta */
+        @keyframes spinSlow {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        .animate-spin-slow {
+          animation: spinSlow 25s linear infinite;
+        }
+      `}</style>
+
       {/* CONTENEDOR VISUAL PRINCIPAL */}
       <div className="w-full h-56 sm:h-64 relative rounded-2xl overflow-hidden border-2 border-black bg-[#38BDF8] flex items-center justify-center">
         
         {/* CAPA 0: Fondo con nubes animadas */}
         <div className="absolute inset-0 z-0 animate-clouds-loop opacity-85 pointer-events-none"></div>
 
-        {/* CAPA 1: Woodstock piloto */}
-        <div className="absolute inset-0 z-10 pointer-events-none overflow-hidden">
-          <div className="animate-woodstock-loop-medium">
-            <div className="absolute -left-8 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-70">
-              <span className="w-3 h-1 bg-white rounded-full border border-black/40"></span>
-              <span className="w-4 h-1 bg-white rounded-full border border-black/40"></span>
-            </div>
-            
+        {/* CAPA 1: Woodstock piloto con vuelo frontal y giro suave */}
+        <div className="absolute inset-0 z-10 pointer-events-none overflow-hidden flex items-center">
+          <div className="woodstock-erratic-animation absolute left-2 flex items-center">
             <img 
               src="/juego-woodsock-piloto.png" 
               alt="Woodstock Piloto" 
-              className="w-12 h-12 object-contain drop-shadow-[3px_3px_0px_rgba(0,0,0,1)]"
+              className="woodstock-img-flip w-20 h-20 object-contain drop-shadow-[4px_4px_0px_rgba(0,0,0,1)] transition-transform"
               onError={(e) => { e.target.style.display = 'none'; }}
             />
           </div>
         </div>
 
-        {/* CAPA 2: Destellos mágicos */}
-        <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center">
-          <div className="relative w-full h-full">
-            <span className="absolute top-[40%] left-[45%] text-yellow-300 text-4xl animate-sparkle-1 drop-shadow-[0_0_12px_rgba(255,255,0,1)]">✨</span>
-            <span className="absolute top-[35%] left-[52%] text-white text-3xl animate-sparkle-2 drop-shadow-[0_0_12px_rgba(255,255,255,1)]">🌟</span>
-            <span className="absolute top-[48%] left-[48%] text-amber-300 text-3xl animate-sparkle-3 drop-shadow-[0_0_12px_rgba(255,215,0,1)]">⭐</span>
+        {/* CAPA 2: Destellos de luz / Rayos solares posicionados más arriba detrás de la agenda */}
+        <div className="absolute top-[-12%] left-[24%] sm:top-[-10%] sm:left-[27%] z-20 pointer-events-none flex items-center justify-center">
+          <div className="relative w-48 h-48 sm:w-56 sm:h-56 flex items-center justify-center">
+            {/* Rayos giratorios */}
+            <div className="absolute inset-0 animate-spin-slow opacity-95">
+              <svg viewBox="0 0 100 100" className="w-full h-full fill-yellow-300 drop-shadow-[0_0_14px_rgba(253,224,71,1)]">
+                <path d="M50 0 L54 35 L50 50 L46 35 Z" transform="rotate(0 50 50)" />
+                <path d="M50 0 L54 35 L50 50 L46 35 Z" transform="rotate(30 50 50)" />
+                <path d="M50 0 L54 35 L50 50 L46 35 Z" transform="rotate(60 50 50)" />
+                <path d="M50 0 L54 35 L50 50 L46 35 Z" transform="rotate(90 50 50)" />
+                <path d="M50 0 L54 35 L50 50 L46 35 Z" transform="rotate(120 50 50)" />
+                <path d="M50 0 L54 35 L50 50 L46 35 Z" transform="rotate(150 50 50)" />
+                <path d="M50 0 L54 35 L50 50 L46 35 Z" transform="rotate(180 50 50)" />
+                <path d="M50 0 L54 35 L50 50 L46 35 Z" transform="rotate(210 50 50)" />
+                <path d="M50 0 L54 35 L50 50 L46 35 Z" transform="rotate(240 50 50)" />
+                <path d="M50 0 L54 35 L50 50 L46 35 Z" transform="rotate(270 50 50)" />
+                <path d="M50 0 L54 35 L50 50 L46 35 Z" transform="rotate(300 50 50)" />
+                <path d="M50 0 L54 35 L50 50 L46 35 Z" transform="rotate(330 50 50)" />
+              </svg>
+            </div>
+            {/* Núcleo central de brillo */}
+            <div className="absolute w-20 h-20 bg-white rounded-full blur-sm opacity-90 animate-pulse"></div>
           </div>
         </div>
 
