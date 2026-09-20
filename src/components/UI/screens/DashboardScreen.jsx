@@ -187,7 +187,11 @@ export default function DashboardScreen() {
           )}
 
           {/* CABECERA */}
-          <DashboardHeader onOcrOpen={() => setIsOcrOpen(true)} />
+          <DashboardHeader 
+            user_name={currentUser?.email} 
+            activeUser={playerManager.activeUser} 
+            onOcrOpen={() => setIsOcrOpen(true)} 
+          />
           
           {/* PANEL DE CONTROL DE USUARIO ÚNICO */}
           <PlayerControlPanel 

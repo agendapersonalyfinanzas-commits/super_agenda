@@ -182,3 +182,85 @@
     border-right-color: var(--border);
   }
 }
+
+/* ==========================================
+   ANEXO: Animaciones para el DashboardHeader
+   ========================================== */
+
+@keyframes slideClouds {
+  0% { background-position: 0 0; }
+  100% { background-position: 1000px 0; }
+}
+
+@keyframes woodstockLoopMedium {
+  0% {
+    left: -15%;
+    top: 25%;
+    transform: scale(2, 2) translateY(0px) rotate(-3deg);
+  }
+  25% {
+    left: 35%;
+    top: 15%;
+    transform: scale(2, 2) translateY(-12px) rotate(5deg);
+  }
+  48% {
+    left: 85%;
+    top: 28%;
+    transform: scale(2, 2) translateY(8px) rotate(-4deg);
+  }
+  49% {
+    /* Giro en espejo manteniendo proporción 2x */
+    left: 85%;
+    top: 28%;
+    transform: scale(-2, 2) translateY(8px) rotate(4deg);
+  }
+  75% {
+    left: 40%;
+    top: 35%;
+    transform: scale(-2, 2) translateY(-8px) rotate(-5deg);
+  }
+  99% {
+    left: -15%;
+    top: 25%;
+    transform: scale(-2, 2) translateY(0px) rotate(3deg);
+  }
+  100% {
+    left: -15%;
+    top: 25%;
+    transform: scale(2, 2) translateY(0px) rotate(-3deg);
+  }
+}
+
+@keyframes sparkleTwinkle {
+  0%, 100% {
+    opacity: 0.2;
+    transform: scale(0.6);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2) rotate(15deg);
+  }
+}
+
+.animate-clouds-loop {
+  background-image: radial-gradient(circle, rgba(255,255,255,0.7) 8%, transparent 8%);
+  background-size: 45px 45px;
+  animation: slideClouds 30s linear infinite;
+}
+
+.animate-woodstock-loop-medium {
+  position: absolute;
+  animation: woodstockLoopMedium 14s ease-in-out infinite !important;
+}
+
+.animate-sparkle-1 {
+  animation: sparkleTwinkle 2.5s ease-in-out infinite;
+}
+
+.animate-sparkle-2 {
+  animation: sparkleTwinkle 1.8s ease-in-out infinite 0.7s;
+}
+
+.animate-sparkle-3 {
+  animation: sparkleTwinkle 3s ease-in-out infinite 1.2s;
+}

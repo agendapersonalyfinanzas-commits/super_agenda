@@ -1,21 +1,30 @@
-// 1. Carga automática dinámica de todas las imágenes .png de public/
-const rawModules = import.meta.glob('/public/*.png', { eager: true, import: 'default' });
+// 1. Mapa y lista de presets usando rutas estáticas seguras para evitar errores de Vite en public/
+export const PRESET_MAP = {
+  'lucy-analytics': '/lucy-analytics.png',
+  'charlie-market': '/charlie-market.png',
+  'snoopy-repair': '/snoopy-repair.png',
+  'snoopy-food': '/snoopy-food.png',
+  'woodstock-travel': '/woodstock-travel.png',
+  'super-snoopy': '/super-snoopy.png',
+  'snoopy-gasolina': '/snoopy-gasolina.png',
+  'franklin-internet': '/franklin-internet.png',
+  'linus-cfe': '/linus-cfe.png',
+  'linus-dulces': '/linus-dulces.png',
+  'lucy-secretaria': '/lucy-secretaria.png',
+  'paty-telcel': '/paty-telcel.png',
+  'sally-oficinista': '/sally-oficinista.png',
+  'schroeder-limonada': '/schroeder-limonada.png',
+  'snoopy-caev': '/snoopy-caev.png',
+  'snoopy-maestro': '/snoopy-maestro.png',
+  'snoopy-alquiler': '/snoopy-alquiler.png',
+  'woodstock-gas': '/woodstock-gas.png'
+};
 
-export const PRESET_MAP = {};
-export const PRESETS = [];
-
-Object.entries(rawModules).forEach(([path]) => {
-  const fileName = path.split('/').pop();            // ej: "charlie-market.png"
-  const key = fileName.replace(/\.[^/.]+$/, '');     // ej: "charlie-market"
-  const src = `/${fileName}`;                       // ej: "/charlie-market.png"
-
-  PRESET_MAP[key] = src;
-  PRESETS.push({
-    key,
-    name: key.replace(/-/g, ' ').toUpperCase(),      // ej: "CHARLIE MARKET"
-    src
-  });
-});
+export const PRESETS = Object.entries(PRESET_MAP).map(([key, src]) => ({
+  key,
+  name: key.replace(/-/g, ' ').toUpperCase(),
+  src
+}));
 
 // Alias de compatibilidad
 if (PRESET_MAP['snoopy-gasolina']) {
@@ -73,8 +82,8 @@ export const snoopyCaev = PRESET_MAP['snoopy-caev'] || '/snoopy-caev.png';
 export const SnoopyMaestroIcon = PRESET_MAP['snoopy-maestro'] || '/snoopy-maestro.png';
 export const snoopyMaestro = PRESET_MAP['snoopy-maestro'] || '/snoopy-maestro.png';
 
-export const SnoppyAlquilerIcon = PRESET_MAP['snoppy-alquiler'] || '/snoppy-alquiler.png';
-export const snoppyAlquiler = PRESET_MAP['snoppy-alquiler'] || '/snoppy-alquiler.png';
+export const SnoopyAlquilerIcon = PRESET_MAP['snoopy-alquiler'] || '/snoopy-alquiler.png';
+export const snoopyAlquiler = PRESET_MAP['snoopy-alquiler'] || '/snoopy-alquiler.png';
 
 export const WoodstockGasIcon = PRESET_MAP['woodstock-gas'] || '/woodstock-gas.png';
 export const woodstockGas = PRESET_MAP['woodstock-gas'] || '/woodstock-gas.png';

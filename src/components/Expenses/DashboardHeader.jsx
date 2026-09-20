@@ -3,70 +3,11 @@ import { supabase } from '../../supabaseClient';
 
 export default function DashboardHeader({ user_name, activeUser, onOcrOpen }) {
   const [time, setTime] = useState(new Date());
-  const [displayName, setDisplayName] = useState(user_name || activeUser || 'SUPER USUARIO');
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
-
-  useEffect(() => {
-    if (user_name || activeUser) {
-      setDisplayName(user_name || activeUser);
-      return;
-    }
-
-    const fetchUserProfile = async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('nombre, apellido_paterno, apellido_materno')
-            .eq('id', user.id)
-            .maybeSingle();
-
-          if (profile) {
-            const nameParts = [
-              profile.nombre, 
-              profile.apellido_paterno, 
-              profile.apellido_materno
-            ].filter(Boolean);
-
-            if (nameParts.length > 0) {
-              setDisplayName(nameParts.join(' ').toUpperCase());
-              return;
-            }
-          }
-
-          const metaName = user.user_metadata?.nombre;
-          if (metaName) {
-            setDisplayName(metaName.toUpperCase());
-            return;
-          }
-
-          setDisplayName('LUIS RICARDO'); 
-
-        } else {
-          const stored = localStorage.getItem('activeUser') || localStorage.getItem('user_name');
-          if (stored) setDisplayName(stored.toUpperCase());
-        }
-      } catch (e) {
-        console.error("Error al consultar el perfil en Supabase:", e);
-        setDisplayName('LUIS RICARDO');
-      }
-    };
-
-    fetchUserProfile();
-  }, [user_name, activeUser]);
-
-  const seconds = time.getSeconds();
-  const minutes = time.getMinutes();
-  const hours = time.getHours();
-
-  const secDeg = (seconds / 60) * 360;
-  const minDeg = ((minutes + seconds / 60) / 60) * 360;
-  const hourDeg = (((hours % 12) + minutes / 60) / 12) * 360;
 
   const formattedDate = time.toLocaleDateString('es-MX', {
     weekday: 'short',
@@ -81,107 +22,62 @@ export default function DashboardHeader({ user_name, activeUser, onOcrOpen }) {
   });
 
   return (
-    <div className="bg-[#FBBF24] border-4 border-black rounded-3xl p-4 sm:p-5 shadow-[6px_6px_0px_rgba(0,0,0,1)] flex flex-col items-center gap-4 text-center select-none">
+    <div className="bg-[#FBBF24] border-4 border-black rounded-3xl p-3 sm:p-4 shadow-[6px_6px_0px_rgba(0,0,0,1)] flex flex-col gap-3 select-none w-full">
       
-      {/* SALUDO DINÁMICO CON NOMBRE COMPLETO */}
-      <div className="bg-white border-2 border-black px-3 py-1 rounded-full shadow-[2px_2px_0px_rgba(0,0,0,1)] flex items-center gap-1.5 -rotate-1">
-        <span className="text-xs">⭐</span>
-        <span className="font-black text-xs uppercase tracking-wider text-black">
-          ¡BIENVENIDO, {displayName} !
-        </span>
-      </div>
-
-      {/* Insignia / Título de la App */}
-      <div className="flex flex-col items-center">
-        <span className="bg-black text-white text-[10px] font-black tracking-widest uppercase px-3 py-0.5 rounded-full border-2 border-white mb-1 shadow-[2px_2px_0px_rgba(0,0,0,1)]">
-          ★ FLIGHT INSTRUMENTS ★
-        </span>
-        <h1 className="text-2xl font-black tracking-wider text-black uppercase">SUPER AGENDA</h1>
-      </div>
-
-      {/* CLUSTER DE INSTRUMENTOS */}
-      <div className="relative flex items-center justify-center w-full my-3">
+      {/* CONTENEDOR VISUAL PRINCIPAL */}
+      <div className="w-full h-56 sm:h-64 relative rounded-2xl overflow-hidden border-2 border-black bg-[#38BDF8] flex items-center justify-center">
         
-        {/* MEDIDOR 1: HORAS */}
-        <div className="flex flex-col items-center z-10 -mr-4 sm:-mr-6">
-          <div className="relative w-28 h-28 sm:w-32 sm:h-32 rounded-full border-4 border-black bg-[#60A5FA] shadow-[5px_5px_0px_rgba(0,0,0,1)] shrink-0 overflow-hidden flex items-center justify-center">
-            <div className="absolute inset-2 rounded-full border-2 border-black/30 border-dashed" />
-            <span className="absolute top-1.5 font-mono font-black text-xs text-black">12</span>
-            <span className="absolute right-2 font-mono font-black text-xs text-black">3</span>
-            <span className="absolute bottom-1.5 font-mono font-black text-xs text-black">6</span>
-            <span className="absolute left-2 font-mono font-black text-xs text-black">9</span>
+        {/* CAPA 0: Fondo con nubes animadas */}
+        <div className="absolute inset-0 z-0 animate-clouds-loop opacity-85 pointer-events-none"></div>
 
-            <div 
-              className="absolute w-2 h-9 sm:h-10 bg-black rounded-full origin-bottom bottom-1/2 left-[calc(50%-4px)] border border-white z-10 shadow-md"
-              style={{ transform: `rotate(${hourDeg}deg)` }}
-            />
-            <div className="absolute w-4 h-4 bg-white border-2 border-black rounded-full z-20" />
-          </div>
-
-          <span className="mt-2 font-black text-[10px] sm:text-xs text-black bg-white px-2.5 py-0.5 rounded-md border-2 border-black shadow-[2px_2px_0px_rgba(0,0,0,1)] -rotate-3">
-            ⏱ {String(hours % 12 || 12).padStart(2, '0')} HORAS
-          </span>
-        </div>
-
-        {/* MEDIDOR 2: MINUTOS (SNOOPY) */}
-        <div className="flex flex-col items-center z-20">
-          <div className="relative w-40 h-40 sm:w-44 sm:h-44 rounded-full border-4 border-black bg-white shadow-[7px_7px_0px_rgba(0,0,0,1)] shrink-0 overflow-hidden flex items-center justify-center">
+        {/* CAPA 1: Woodstock con tamaño proporcionado medio (2x), vuelo lento y por DETRÁS de Snoopy */}
+        <div className="absolute inset-0 z-10 pointer-events-none overflow-hidden">
+          <div className="animate-woodstock-loop-medium">
+            {/* Estela de vuelo */}
+            <div className="absolute -left-8 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-70">
+              <span className="w-3 h-1 bg-white rounded-full border border-black/40"></span>
+              <span className="w-4 h-1 bg-white rounded-full border border-black/40"></span>
+            </div>
             
             <img 
-              src="/snoopy-aviator.png" 
-              alt="Snoopy Aviador" 
-              className="absolute inset-0 w-full h-full object-cover scale-110" 
+              src="/juego-woodsock-piloto.png" 
+              alt="Woodstock Piloto" 
+              className="w-12 h-12 object-contain drop-shadow-[3px_3px_0px_rgba(0,0,0,1)]"
+              onError={(e) => { e.target.style.display = 'none'; }}
             />
-
-            <div className="absolute inset-2.5 rounded-full border-2 border-black/20 pointer-events-none" />
-
-            <div 
-              className="absolute w-2.5 h-16 sm:h-18 bg-red-600 rounded-full origin-bottom bottom-1/2 left-[calc(50%-5px)] border-2 border-black z-20 shadow-lg"
-              style={{ transform: `rotate(${minDeg}deg)` }}
-            />
-
-            <div className="absolute w-5 h-5 bg-yellow-400 border-2 border-black rounded-full z-30 shadow-md" />
           </div>
-
-          <span className="mt-2 font-black text-xs sm:text-sm text-white bg-red-600 px-3.5 py-1 rounded-md border-2 border-black shadow-[2px_2px_0px_rgba(0,0,0,1)] rotate-1">
-            ✈ {String(minutes).padStart(2, '0')} MINUTOS
-          </span>
         </div>
 
-        {/* MEDIDOR 3: SEGUNDOS */}
-        <div className="flex flex-col items-center z-10 -ml-4 sm:-ml-6">
-          <div className="relative w-28 h-28 sm:w-32 sm:h-32 rounded-full border-4 border-black bg-[#FACC15] shadow-[5px_5px_0px_rgba(0,0,0,1)] shrink-0 overflow-hidden flex items-center justify-center">
-            
-            <div className="absolute inset-2.5 rounded-full border border-black/40" />
-            <div className="absolute w-full h-px bg-black/20" />
-            <div className="absolute h-full w-px bg-black/20" />
-
-            <div 
-              className="absolute w-2 h-10 sm:h-11 bg-red-600 origin-bottom bottom-1/2 left-[calc(50%-4px)] z-10 shadow-sm"
-              style={{ transform: `rotate(${secDeg}deg)` }}
-            >
-              <div className="w-3 h-3 -ml-0.5 -mt-1 bg-black rounded-full" />
-            </div>
-
-            <div className="absolute w-4 h-4 bg-black rounded-full z-20" />
+        {/* CAPA 2: Destellos mágicos gigantes y brillantes (Colocados justo al centro-izq donde suele estar la agenda) */}
+        <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center">
+          <div className="relative w-full h-full">
+            <span className="absolute top-[40%] left-[45%] text-yellow-300 text-4xl animate-sparkle-1 drop-shadow-[0_0_12px_rgba(255,255,0,1)]">✨</span>
+            <span className="absolute top-[35%] left-[52%] text-white text-3xl animate-sparkle-2 drop-shadow-[0_0_12px_rgba(255,255,255,1)]">🌟</span>
+            <span className="absolute top-[48%] left-[48%] text-amber-300 text-3xl animate-sparkle-3 drop-shadow-[0_0_12px_rgba(255,215,0,1)]">⭐</span>
           </div>
-
-          <span className="mt-2 font-black text-[10px] sm:text-xs text-black bg-white px-2.5 py-0.5 rounded-md border-2 border-black shadow-[2px_2px_0px_rgba(0,0,0,1)] rotate-3">
-            ⚡ {String(seconds).padStart(2, '0')}s ALT
-          </span>
         </div>
+
+        {/* CAPA 3: Imagen principal de frente (Snoopy ciudad transparente) */}
+        <img 
+          src="/snoppy-ciudad-tranparente.png" 
+          alt="Super Agenda Snoopy" 
+          className="absolute inset-0 w-full h-full object-cover z-30 pointer-events-none"
+          onError={(e) => { e.target.style.display = 'none'; }}
+        />
 
       </div>
 
-      {/* Botón de Acción y Contenedor de Fecha */}
-      <div className="w-full flex flex-col gap-3 mt-1">
-        <button 
-          type="button"
-          onClick={onOcrOpen}
-          className="w-full bg-white border-[3px] border-black rounded-2xl py-2.5 px-4 font-black text-black shadow-[4px_4px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all flex items-center justify-center gap-2 text-sm uppercase cursor-pointer"
-        >
-          📸 ESCANEAR TICKET
-        </button>
+      {/* CONTENEDOR INFERIOR: Botón de Escanear y fecha/hora */}
+      <div className="flex flex-col gap-2.5 w-full">
+        <div className="flex justify-start w-full">
+          <button 
+            type="button"
+            onClick={onOcrOpen}
+            className="bg-white border-[3px] border-black rounded-2xl py-2 px-4 font-black text-black shadow-[4px_4px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all flex items-center gap-2 text-xs sm:text-sm uppercase cursor-pointer"
+          >
+            📸 ESCANEAR TICKET
+          </button>
+        </div>
 
         <div className="w-full bg-white border-[3px] border-black rounded-2xl py-2 px-4 shadow-[4px_4px_0px_rgba(0,0,0,1)] flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -189,7 +85,7 @@ export default function DashboardHeader({ user_name, activeUser, onOcrOpen }) {
             <span className="font-extrabold text-xs sm:text-sm text-black">{formattedDate}</span>
           </div>
 
-          <div className="font-mono font-black text-xs sm:text-sm text-black bg-[#FAF7F2] px-3 py-1 rounded-xl border-2 border-black">
+          <div className="font-mono font-black text-xs sm:text-sm text-black bg-[#FAF7F2] px-3 py-1 rounded-full border-2 border-black shadow-[inset_1px_1px_2px_rgba(0,0,0,1)]">
             {formattedTime}
           </div>
         </div>

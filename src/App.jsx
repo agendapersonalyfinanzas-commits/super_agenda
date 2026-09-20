@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
+import './App.css'; // 👈 Importación de estilos globales y animaciones
 
 // Importación de pantallas y navegación
 import DashboardScreen from './components/UI/screens/DashboardScreen.jsx';

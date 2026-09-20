@@ -3,14 +3,17 @@ import CalendarGrid from '../../../services/CalendarGrid';
 import SIdenoteCanvas from '../../Expenses/SIdenoteCanvas';
 import VoiceNoteModal from '../../Notes/VoiceNoteModal';
 
+// ¡IMPORTANTE! Ajusta esta ruta a donde tengas tu cliente de Supabase
+import { supabase } from '../../../supabaseClient'; 
+
 // Utilidades centralizadas
 import { guardarEnStorage, obtenerDeStorage } from '../../../utils/storage.js';
 import { formatearFechaCorta } from '../../../utils/fechas.js';
 import { aMayusculas } from '../../../utils/mayusculas.js';
 import { obtenerMensajeError } from '../../../utils/errores.js';
 
+// Solo conservamos el storage para las notas de dibujo temporalmente
 const NOTES_STORAGE_KEY = 'family_spen_notes';
-const TASKS_STORAGE_KEY = 'family_calendar_tasks';
 
 export default function CalendarScreen() {
   const [isCanvasOpen, setIsCanvasOpen] = useState(false);
@@ -19,18 +22,157 @@ export default function CalendarScreen() {
   const [newTaskText, setNewTaskText] = useState('');
   const [newTaskTime, setNewTaskTime] = useState('09:00');
   
-  // Estado para el aviso visual de guardado con éxito
   const [successMessage, setSuccessMessage] = useState('');
 
-  // Persistencia de notas rápidas y tareas por fecha
+  // Persistencia de notas rápidas (localStorage por ahora)
   const [savedNotes, setSavedNotes] = useState(() => 
     obtenerDeStorage(NOTES_STORAGE_KEY, [])
   );
-  const [dayTasks, setDayTasks] = useState(() => 
-    obtenerDeStorage(TASKS_STORAGE_KEY, {})
-  );
+  
+  // Tareas del día ahora inician vacías, se llenarán con Supabase
+  const [dayTasks, setDayTasks] = useState({});
 
-  // Solicitar permisos de notificación nativos
+  // ----------------------------------------------------------------
+  // NUEVO: FUNCIONES DE SUPABASE (Paso 1)
+  // ----------------------------------------------------------------
+  
+  const fetchActivities = async () => {
+    try {
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError || !userData?.user) return; // Si no hay usuario, no hacemos nada
+
+      const { data, error } = await supabase
+        .from('agenda_events')
+        .select('*')
+        .eq('user_id', userData.user.id);
+
+      if (error) throw error;
+
+      // Convertimos el arreglo de Supabase al formato que necesita tu CalendarGrid:
+      // { '19/09/2026': [ {id, text, time}, ... ] }
+      const grouped = {};
+      data.forEach(task => {
+        // La BD entrega 'YYYY-MM-DD'
+        const [year, month, day] = task.event_date.split('-');
+        const dateStr = `${day}/${month}/${year}`;
+        
+        if (!grouped[dateStr]) grouped[dateStr] = [];
+        grouped[dateStr].push({
+          id: task.id, // Ahora es un UUID de Supabase
+          text: task.title,
+          time: task.event_time ? task.event_time.substring(0, 5) : '00:00', // Cortamos 'HH:mm:ss' a 'HH:mm'
+          is_completed: task.is_completed,
+          is_expense: task.is_expense,
+          icon_url: task.icon_url
+        });
+      });
+
+      // Ordenamos las actividades de cada día por hora
+      Object.keys(grouped).forEach(date => {
+        grouped[date].sort((a, b) => a.time.localeCompare(b.time));
+      });
+
+      setDayTasks(grouped);
+    } catch (error) {
+      console.error("Error al cargar eventos de Supabase:", error);
+    }
+  };
+
+  // Cargar actividades al abrir la pantalla
+  useEffect(() => {
+    fetchActivities();
+  }, []);
+
+  const handleAddTask = async () => {
+    if (!newTaskText.trim() || !selectedDate) return;
+    
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData.user.id;
+
+      // Obtener el household_id (Requerido por tus políticas RLS)
+      const { data: profileData } = await supabase
+        .from('users')
+        .select('household_id')
+        .eq('id', userId)
+        .single();
+
+      // Convertir 'DD/MM/YYYY' (UI) a 'YYYY-MM-DD' (Supabase)
+      const [day, month, year] = selectedDate.split('/');
+      const dbDate = `${year}-${month}-${day}`;
+
+      const eventToInsert = {
+        title: newTaskText.trim(),
+        event_date: dbDate,
+        event_time: newTaskTime || '00:00',
+        user_id: userId,
+        household_id: profileData?.household_id,
+        is_completed: false,
+        is_expense: false,
+        icon_url: null
+      };
+
+      const { error } = await supabase
+        .from('agenda_events')
+        .insert([eventToInsert]);
+
+      if (error) throw error;
+
+      // Limpiar formulario y recargar lista real
+      setNewTaskText('');
+      triggerSuccess('¡Actividad guardada en la nube!');
+      fetchActivities(); 
+
+    } catch (error) {
+      console.error("Error al guardar en Supabase:", error.message);
+      alert("Hubo un error al guardar la actividad en la nube.");
+    }
+  };
+
+  const handleDeleteTask = async (taskId) => {
+    const confirmDelete = window.confirm("¿Seguro que deseas borrar esta actividad?");
+    if (!confirmDelete) return;
+
+    try {
+      const { error } = await supabase
+        .from('agenda_events')
+        .delete()
+        .eq('id', taskId);
+
+      if (error) throw error;
+
+      triggerSuccess('Actividad eliminada de la nube');
+      fetchActivities(); // Recargar datos actualizados
+    } catch (error) {
+      console.error("Error al eliminar:", error.message);
+      alert("Hubo un error al eliminar.");
+    }
+  };
+
+  // ----------------------------------------------------------------
+  // NUEVO: FUNCIÓN PARA TACHAR TAREAS (Paso 2)
+  // ----------------------------------------------------------------
+  const handleToggleComplete = async (taskId, currentStatus) => {
+    try {
+      const { error } = await supabase
+        .from('agenda_events')
+        .update({ is_completed: !currentStatus }) // Invierte el estado actual
+        .eq('id', taskId);
+
+      if (error) throw error;
+
+      triggerSuccess(currentStatus ? 'Actividad reabierta' : '¡Actividad completada!');
+      fetchActivities(); // Recarga la lista para aplicar el cambio visual
+    } catch (error) {
+      console.error("Error al actualizar estado:", error.message);
+      alert("Hubo un error al actualizar la actividad.");
+    }
+  };
+
+  // ----------------------------------------------------------------
+  // RESTO DE TU CÓDIGO (Intacto)
+  // ----------------------------------------------------------------
+
   useEffect(() => {
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission().then((permission) => {
@@ -41,7 +183,6 @@ export default function CalendarScreen() {
     }
   }, []);
 
-  // Programar alarmas para las actividades
   useEffect(() => {
     const timers = [];
     const now = new Date();
@@ -80,10 +221,6 @@ export default function CalendarScreen() {
     guardarEnStorage(NOTES_STORAGE_KEY, savedNotes);
   }, [savedNotes]);
 
-  useEffect(() => {
-    guardarEnStorage(TASKS_STORAGE_KEY, dayTasks);
-  }, [dayTasks]);
-
   const handleSaveNote = (base64Data) => {
     try {
       const newNote = { 
@@ -118,36 +255,11 @@ export default function CalendarScreen() {
     }
   };
 
-  // Disparador de alerta visual temporal de éxito
   const triggerSuccess = (msg) => {
     setSuccessMessage(msg);
     setTimeout(() => {
       setSuccessMessage('');
     }, 3000);
-  };
-
-  const handleAddTask = () => {
-    if (!newTaskText.trim() || !selectedDate) return;
-    const currentList = dayTasks[selectedDate] || [];
-    
-    const newTask = { 
-      id: Date.now(), 
-      text: newTaskText.trim(), 
-      time: newTaskTime || '00:00' 
-    };
-
-    const updatedList = [...currentList, newTask].sort((a, b) => a.time.localeCompare(b.time));
-    
-    setDayTasks({ ...dayTasks, [selectedDate]: updatedList });
-    setNewTaskText('');
-    triggerSuccess('¡Actividad guardada con éxito!');
-  };
-
-  const handleDeleteTask = (taskId) => {
-    if (!selectedDate) return;
-    const updatedList = (dayTasks[selectedDate] || []).filter(t => t.id !== taskId);
-    setDayTasks({ ...dayTasks, [selectedDate]: updatedList });
-    triggerSuccess('Actividad eliminada');
   };
 
   const handleDeleteNote = (id) => {
@@ -302,24 +414,46 @@ export default function CalendarScreen() {
             </div>
 
             <div className="space-y-2 max-h-48 overflow-y-auto pt-2">
+              {/* AQUÍ ESTÁ LA NUEVA LISTA CON EL TACHADO VISUAL */}
               {(dayTasks[selectedDate] || []).map((task) => (
                 <div 
                   key={task.id} 
-                  className="flex justify-between items-center p-2.5 bg-white border-2 border-black rounded-xl text-xs font-bold uppercase"
+                  className={`flex justify-between items-center p-2.5 border-2 border-black rounded-xl text-xs font-bold uppercase transition-all duration-300 ${
+                    task.is_completed ? 'bg-stone-200 opacity-70' : 'bg-white'
+                  }`}
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="bg-amber-200 border border-black px-1.5 py-0.5 rounded text-[10px] font-black">
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <span className={`border border-black px-1.5 py-0.5 rounded text-[10px] font-black ${
+                      task.is_completed ? 'bg-stone-400 text-stone-800' : 'bg-amber-200 text-black'
+                    }`}>
                       {task.time}
                     </span>
-                    <span className="break-all font-bold">{task.text}</span>
+                    <span className={`break-all font-bold ${
+                      task.is_completed ? 'line-through text-stone-500' : 'text-black'
+                    }`}>
+                      {task.text}
+                    </span>
                   </div>
-                  <button 
-                    type="button"
-                    onClick={() => handleDeleteTask(task.id)}
-                    className="text-rose-600 font-black ml-2 cursor-pointer hover:underline"
-                  >
-                    ✕
-                  </button>
+                  
+                  {/* Botones de acción (Completar y Eliminar) */}
+                  <div className="flex items-center gap-3 shrink-0 ml-2">
+                    <button 
+                      type="button"
+                      onClick={() => handleToggleComplete(task.id, task.is_completed)}
+                      className="text-lg cursor-pointer hover:scale-125 transition-transform"
+                      title={task.is_completed ? "Desmarcar" : "Completar"}
+                    >
+                      {task.is_completed ? '↩️' : '✅'}
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => handleDeleteTask(task.id)}
+                      className="text-rose-600 font-black cursor-pointer hover:scale-125 transition-transform text-base"
+                      title="Eliminar"
+                    >
+                      ✕
+                    </button>
+                  </div>
                 </div>
               ))}
               {(!dayTasks[selectedDate] || dayTasks[selectedDate].length === 0) && (
