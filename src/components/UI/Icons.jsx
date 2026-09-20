@@ -1,22 +1,46 @@
-// 1. Mapa y lista de presets usando rutas estáticas seguras para evitar errores de Vite en public/
+// 1. Mapa y lista completa de presets incluyendo todos los recursos de la carpeta public
 export const PRESET_MAP = {
-  'lucy-analytics': '/lucy-analytics.png',
   'charlie-market': '/charlie-market.png',
-  'snoopy-repair': '/snoopy-repair.png',
-  'snoopy-food': '/snoopy-food.png',
-  'woodstock-travel': '/woodstock-travel.png',
-  'super-snoopy': '/super-snoopy.png',
-  'snoopy-gasolina': '/snoopy-gasolina.png',
+  'finanzas': '/finanzas.png',
   'franklin-internet': '/franklin-internet.png',
+  'gastos-medicos': '/gastos-medicos.png',
+  'joe-cool-woodstock': '/joe-cool-woodstock.png',
+  'joe-linus': '/joe-linus.png',
+  'joe-marcie': '/joe-marcie.png',
+  'joe-pepermint': '/joe-pepermint.png',
+  'joe-pigpen': '/joe-pigpen.png',
+  'joe-schoader': '/joe-schoader.png',
+  'joe-snoopy': '/joe-snoopy.png',
+  'joe-woodstock': '/joe-woodstock.png',
+  'juego-baron-rojo': '/juego-baron-rojo.png',
+  'juego-franklin': '/juego-franklin.png',
+  'juego-linus': '/juego-linus.png',
+  'juego-paty': '/juego-paty.png',
+  'juego-pigpen': '/juego-pigpen.png',
+  'juego-sally': '/juego-sally.png',
+  'juego-schroader': '/juego-schroader.png',
+  'juego-snoopy-rojo-1': '/juego-snoopy-rojo-1.png',
+  'juego-woodstock-piloto': '/juego-woodstock-piloto.png',
+  'juego-woodstock': '/juego-woodstock.png',
+  'juegol-linus': '/juegol-linus.png',
   'linus-cfe': '/linus-cfe.png',
   'linus-dulces': '/linus-dulces.png',
+  'lucy-analytics': '/lucy-analytics.png',
+  'lucy-colegiatura': '/lucy-colegiatura.png',
   'lucy-secretaria': '/lucy-secretaria.png',
+  'marcia-cita-medica': '/marcia-cita-medica.png',
+  'metricas': '/metricas.png',
   'paty-telcel': '/paty-telcel.png',
-  'sally-oficinista': '/sally-oficinista.png',
   'schroeder-limonada': '/schroeder-limonada.png',
   'snoopy-caev': '/snoopy-caev.png',
+  'snoopy-food': '/snoopy-food.png',
+  'snoopy-gasolina': '/snoopy-gasolina.png',
   'snoopy-maestro': '/snoopy-maestro.png',
-  'snoopy-alquiler': '/snoopy-alquiler.png',
+  'snoopy-mucama': '/snoopy-mucama.png',
+  'snoopy-repair': '/snoopy-repair.png',
+  'snoppy-alquiler': '/snoppy-alquiler.png',
+  'super-snoopy': '/super-snoopy.png',
+  'woodstock-travel': '/woodstock-travel.png',
   'woodstock-gas': '/woodstock-gas.png'
 };
 
@@ -26,14 +50,14 @@ export const PRESETS = Object.entries(PRESET_MAP).map(([key, src]) => ({
   src
 }));
 
-// Alias de compatibilidad
+// Aliases de compatibilidad
 if (PRESET_MAP['snoopy-gasolina']) {
   PRESET_MAP['gasolina'] = PRESET_MAP['snoopy-gasolina'];
 }
 
 export const PRESET_ICONS = PRESETS;
 
-// 2. Exportaciones individuales nombradas para que pantallas como AnalyticsScreen no fallen
+// 2. Exportaciones individuales nombradas
 export const LucyAnalyticsIcon = PRESET_MAP['lucy-analytics'] || '/lucy-analytics.png';
 export const lucyAnalytics = PRESET_MAP['lucy-analytics'] || '/lucy-analytics.png';
 
@@ -81,6 +105,9 @@ export const snoopyCaev = PRESET_MAP['snoopy-caev'] || '/snoopy-caev.png';
 
 export const SnoopyMaestroIcon = PRESET_MAP['snoopy-maestro'] || '/snoopy-maestro.png';
 export const snoopyMaestro = PRESET_MAP['snoopy-maestro'] || '/snoopy-maestro.png';
+
+export const SnoopyMucamaIcon = PRESET_MAP['snoopy-mucama'] || '/snoopy-mucama.png';
+export const snoopyMucama = PRESET_MAP['snoopy-mucama'] || '/snoopy-mucama.png';
 
 export const SnoopyAlquilerIcon = PRESET_MAP['snoopy-alquiler'] || '/snoopy-alquiler.png';
 export const snoopyAlquiler = PRESET_MAP['snoopy-alquiler'] || '/snoopy-alquiler.png';

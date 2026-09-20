@@ -1,42 +1,23 @@
 import React, { useState } from 'react';
 import QuickExpenseButton from './QuickExpenseButton';
+import { PRESET_MAP } from '../UI/Icons'; // 👈 Asegúrate de que la ruta apunte correctamente a tu archivo Icons.jsx
 
-const getDynamicPublicIcons = () => {
-  try {
-    if (import.meta && import.meta.glob) {
-      const globFiles = import.meta.glob('/public/*.{png,jpg,jpeg,webp,svg}', { eager: true });
-      return Object.keys(globFiles).map(path => path.replace('/public', ''));
-    }
-  } catch (err) {
-    console.warn('Carga dinámica de iconos no disponible, usando presets estáticos.');
+// Función auxiliar para resolver la ruta de la imagen sin importar cómo esté guardada
+const getIconSrc = (iconValue) => {
+  if (!iconValue) return '/charlie-market.png';
+  if (iconValue.startsWith('data:image')) return iconValue;
+  if (iconValue.startsWith('/')) return iconValue;
+  
+  const cleanKey = iconValue.replace(/^\//, '').replace(/\.png$/, '');
+  if (PRESET_MAP[cleanKey]) {
+    return PRESET_MAP[cleanKey];
   }
-  return [];
+  return `/${cleanKey}.png`;
 };
 
-const STATIC_PRESETS = [
-  '/charlie-arrendador.png',
-  '/snoopy-arrendador.png',
-  '/charlie-market.png',
-  '/finanzas.png',
-  '/franklin-internet.png',
-  '/gastos-medicos.png',
-  '/linus-cfe.png',
-  '/linus-dulces.png',
-  '/lucy-analytics.png',
-  '/lucy-secretaria.png',
-  '/paty-telcel.png',
-  '/schroeder-limonada.png',
-  '/snoopy-caev.png',
-  '/snoopy-food.png',
-  '/snoopy-gasolina.png',
-  '/snoopy-maestro.png',
-  '/snoopy-repair.png',
-  '/snoppy-alquiler.png'
-];
+const STATIC_PRESETS = Object.values(PRESET_MAP);
 
-const DEFAULT_PRESET_ICONS = Array.from(
-  new Set([...getDynamicPublicIcons(), ...STATIC_PRESETS])
-);
+const DEFAULT_PRESET_ICONS = Array.from(new Set(STATIC_PRESETS));
 
 export default function QuickActionGrid(props) {
   const {
@@ -187,7 +168,6 @@ export default function QuickActionGrid(props) {
       <div className="flex items-center justify-between mb-4 border-b-4 border-black pb-2">
         <h3 className="font-black text-xl uppercase text-black tracking-wide">{title}</h3>
         <div className="flex items-center gap-2">
-          {/* Se eliminó el botón superior + AÑADIR para evitar duplicidad y saturar la pantalla */}
           <button
             type="button"
             onClick={() => setIsEditMode(!isEditMode)}
@@ -203,10 +183,17 @@ export default function QuickActionGrid(props) {
       <div className="grid grid-cols-3 sm:grid-cols-4 gap-6 pt-2" onDragOver={handleDragOver}>
         {actions.map((action, idx) => {
           const uniqueKey = `${action.id || 'btn'}_${idx}`;
+          // 🌟 Aplicamos getIconSrc para asegurar que la ruta del icono siempre sea válida
+          const resolvedAction = {
+            ...action,
+            icon: getIconSrc(action.icon || action.image),
+            image: getIconSrc(action.icon || action.image)
+          };
+
           return (
             <QuickExpenseButton
               key={uniqueKey}
-              action={action}
+              action={resolvedAction}
               index={idx}
               isEditMode={isEditMode}
               onClick={handleActionClick}
@@ -276,7 +263,7 @@ export default function QuickActionGrid(props) {
               <div>
                 <label className="text-xs font-black uppercase mb-2 block text-black">Imagen del botón:</label>
                 <div className="flex items-center gap-4 mb-3 p-3 bg-white border-4 border-black rounded-xl">
-                  <img src={btnIcon} alt="preview" className="w-16 h-16 object-cover rounded-full border-2 border-black" />
+                  <img src={getIconSrc(btnIcon)} alt="preview" className="w-16 h-16 object-cover rounded-full border-2 border-black" />
                   <label className="bg-blue-400 text-black text-xs font-black p-2 rounded-lg border-2 border-black text-center cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 w-full">
                     📸 CÁMARA / GALERÍA
                     <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
@@ -320,7 +307,7 @@ export default function QuickActionGrid(props) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div className={`${type === 'expense' ? 'bg-rose-100' : 'bg-green-100'} border-4 border-black p-6 rounded-3xl w-full max-w-sm shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] animate-bounce-short`}>
             <div className="flex items-center gap-3 mb-4 border-b-4 border-black pb-4">
-              <img src={transAction.icon || transAction.image} alt="icon" className="w-16 h-16 object-cover rounded-full border-4 border-black bg-white" />
+              <img src={getIconSrc(transAction.icon || transAction.image)} alt="icon" className="w-16 h-16 object-cover rounded-full border-4 border-black bg-white" />
               <div>
                 <h2 className="text-xl font-black uppercase text-black">{type === 'expense' ? 'NUEVO GASTO' : 'NUEVO INGRESO'}</h2>
                 <p className="text-xs font-bold text-stone-600">{transAction.category}</p>

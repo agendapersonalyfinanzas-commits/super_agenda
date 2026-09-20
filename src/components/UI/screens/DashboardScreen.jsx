@@ -55,6 +55,7 @@ const PRESET_ICONS = [
   '/juego-woodstock.png',
   '/juegol-linus.png',
   '/linus-cfe.png',
+  '/snoopy-mucama.png',
   '/linus-dulces.png',
   '/lucy-analytics.png',
   '/lucy-colegiatura.png',
@@ -316,7 +317,7 @@ export default function DashboardScreen() {
             <GlobalBalanceCard 
               totalIncome={txManager.totalIncome}
               weeklyTotal={txManager.weeklyTotal}
-              bgImage={PRESET_ICONS[6]}
+              bgImage="/lucy-analytics.png"
               transactions={txManager.recentTransactions}
             />
 
