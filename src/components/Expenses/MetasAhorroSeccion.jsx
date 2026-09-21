@@ -6,18 +6,15 @@ export default function MetasAhorroSeccion({ activeUser }) {
   const [metas, setMetas] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // Estados para formulario de nueva meta
   const [nuevoTitulo, setNuevoTitulo] = useState('');
   const [nuevoMonto, setNuevoMonto] = useState('');
   const [nuevaFecha, setNuevaFecha] = useState('');
   const [nuevoIcon, setNuevoIcon] = useState('🎯');
   
-  // Estados para alertas de retroalimentación visual (Feedback UX)
   const [mensajeExito, setMensajeExito] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   
-  // Estado para filtro de visualización
-  const [filtroEstado, setFiltroEstado] = useState('todas'); // 'todas', 'activas', 'completadas'
+  const [filtroEstado, setFiltroEstado] = useState('todas');
 
   const iconosDisponibles = ['🎯', '🚗', '🏠', '✈️', '💻', '🎓', '🛠️', '💰', '🏆', '🐶'];
 
@@ -25,6 +22,16 @@ export default function MetasAhorroSeccion({ activeUser }) {
     if (activeUser) {
       fetchMetas();
     }
+
+    // 🌟 Sincronización automática con eventos globales
+    const handleGoalUpdated = () => {
+      fetchMetas();
+    };
+
+    window.addEventListener('goal-updated', handleGoalUpdated);
+    return () => {
+      window.removeEventListener('goal-updated', handleGoalUpdated);
+    };
   }, [activeUser]);
 
   const fetchMetas = async () => {
@@ -69,17 +76,13 @@ export default function MetasAhorroSeccion({ activeUser }) {
 
       if (error) throw error;
 
-      // Activar alerta visual de éxito
       setMensajeExito('🎉 ¡Meta creada y guardada con éxito en la base de datos!');
-
-      // Limpiar formulario
       setNuevoTitulo('');
       setNuevoMonto('');
       setNuevaFecha('');
       setNuevoIcon('🎯');
       fetchMetas();
 
-      // Ocultar alerta automáticamente después de 4 segundos
       setTimeout(() => {
         setMensajeExito('');
       }, 4000);
@@ -90,7 +93,6 @@ export default function MetasAhorroSeccion({ activeUser }) {
     }
   };
 
-  // Filtrar metas según estado
   const metasFiltradas = metas.filter((meta) => {
     const actual = parseFloat(meta.current_amount || 0);
     const objetivo = parseFloat(meta.target_amount || 1);
@@ -101,20 +103,23 @@ export default function MetasAhorroSeccion({ activeUser }) {
     return true;
   });
 
+  const totalAhorradoGeneral = metas.reduce((acc, m) => acc + parseFloat(m.current_amount || 0), 0);
+  const totalObjetivoGeneral = metas.reduce((acc, m) => acc + parseFloat(m.target_amount || 0), 0);
+  const porcentajeGlobal = totalObjetivoGeneral > 0 ? Math.min(Math.round((totalAhorradoGeneral / totalObjetivoGeneral) * 100), 100) : 0;
+  const metasLogradasCount = metas.filter(m => parseFloat(m.current_amount || 0) >= parseFloat(m.target_amount || 1)).length;
+
   return (
-    <div className="bg-[#FEF08A] border-4 border-black rounded-3xl p-4 sm:p-6 shadow-[6px_6px_0px_rgba(0,0,0,1)] w-full flex flex-col gap-5 select-none">
+    <div className="bg-[#FEF08A] border-4 border-black rounded-3xl p-4 sm:p-6 shadow-[6px_6px_0px_rgba(0,0,0,1)] w-full flex flex-col gap-5 select-none font-mono">
       
-      {/* Encabezado */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b-2 border-black pb-3 gap-3">
         <div className="flex items-center gap-2.5">
           <span className="text-2xl">🎯</span>
           <div>
             <h2 className="font-black text-base sm:text-lg uppercase tracking-wider text-black">Metas y Ahorros</h2>
-            <p className="text-[10px] font-mono uppercase text-gray-700">Gestiona tus fondos y plazos financieros</p>
+            <p className="text-[10px] uppercase text-gray-700">Gestiona tus fondos y plazos financieros</p>
           </div>
         </div>
         
-        {/* Filtros de visualización */}
         <div className="flex items-center gap-1.5 bg-white border-2 border-black p-1 rounded-2xl shadow-[2px_2px_0px_rgba(0,0,0,1)]">
           <button 
             type="button"
@@ -140,10 +145,39 @@ export default function MetasAhorroSeccion({ activeUser }) {
         </div>
       </div>
 
-      {/* Formulario para Crear Meta */}
+      {metas.length > 0 && (
+        <div className="bg-white border-3 border-black rounded-2xl p-4 shadow-[4px_4px_0px_rgba(0,0,0,1)] flex flex-col gap-2 relative overflow-hidden">
+          <div className="flex justify-between items-center text-xs font-black uppercase">
+            <span className="flex items-center gap-2">
+              <img 
+                src="/joe-snoopy.png" 
+                alt="Snoopy Clásico" 
+                className="w-8 h-8 object-contain filter drop-shadow-[1px_1px_0px_rgba(0,0,0,1)]" 
+              />
+              {porcentajeGlobal >= 100 ? '🏆 ¡Snoopy Celebra Tus Logros Globales!' : '✨ ¡Snoopy Te Acompaña al Éxito Financiero!'}
+            </span>
+            <span className="bg-sky-200 border-2 border-black px-2 py-0.5 rounded-lg text-[11px]">
+              {porcentajeGlobal}% Global ({metasLogradasCount}/{metas.length} Metas)
+            </span>
+          </div>
+
+          <div className="relative w-full h-7 bg-gray-100 border-3 border-black rounded-xl overflow-visible my-1 shadow-inner">
+            <div 
+              className="h-full bg-linear-to-r from-sky-400 to-emerald-400 rounded-lg transition-all duration-500 border-r-2 border-black"
+              style={{ width: `${porcentajeGlobal}%` }}
+            />
+          </div>
+
+          <p className="text-[10px] text-gray-600 font-bold text-center uppercase tracking-wide">
+            {porcentajeGlobal >= 100 
+              ? '✨ ¡Increíble trabajo! Todas tus metas han alcanzado la meta.' 
+              : `Sigue sumando aportaciones para completar tus objetivos de ahorro.`
+            }
+          </p>
+        </div>
+      )}
+
       <form onSubmit={handleCreateMeta} className="bg-white border-[3px] border-black rounded-2xl p-4 shadow-[4px_4px_0px_rgba(0,0,0,1)] flex flex-col gap-3">
-        
-        {/* Alerta de Éxito */}
         {mensajeExito && (
           <div className="bg-green-300 border-2 border-black rounded-xl p-2.5 text-xs font-black uppercase tracking-wide text-black shadow-[2px_2px_0px_rgba(0,0,0,1)] flex items-center justify-between">
             <span>{mensajeExito}</span>
@@ -151,7 +185,6 @@ export default function MetasAhorroSeccion({ activeUser }) {
           </div>
         )}
 
-        {/* Alerta de Error */}
         {errorMsg && (
           <div className="bg-red-300 border-2 border-black rounded-xl p-2.5 text-xs font-black uppercase tracking-wide text-black shadow-[2px_2px_0px_rgba(0,0,0,1)] flex items-center justify-between">
             <span>{errorMsg}</span>
@@ -178,7 +211,7 @@ export default function MetasAhorroSeccion({ activeUser }) {
 
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 border-t border-black/10">
           <div className="flex items-center gap-2 w-full sm:w-auto">
-            <span className="text-[11px] font-black uppercase font-mono">Plazo / Fecha:</span>
+            <span className="text-[11px] font-black uppercase">Plazo / Fecha:</span>
             <input 
               type="date" 
               value={nuevaFecha}
@@ -188,7 +221,7 @@ export default function MetasAhorroSeccion({ activeUser }) {
           </div>
 
           <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
-            <span className="text-[11px] font-black uppercase font-mono mr-1">Icono:</span>
+            <span className="text-[11px] font-black uppercase mr-1">Icono:</span>
             {iconosDisponibles.map((icon) => (
               <button
                 key={icon}
@@ -212,15 +245,14 @@ export default function MetasAhorroSeccion({ activeUser }) {
         </div>
       </form>
 
-      {/* Lista de Metas */}
       {loading ? (
-        <div className="text-center py-8 font-mono font-black text-xs uppercase animate-pulse">
+        <div className="text-center py-8 font-black text-xs uppercase animate-pulse">
           Cargando metas y ahorros...
         </div>
       ) : metasFiltradas.length === 0 ? (
         <div className="bg-white/60 border-2 border-dashed border-black rounded-2xl p-8 text-center">
           <p className="font-bold text-xs uppercase text-gray-700">No hay metas registradas en esta vista.</p>
-          <p className="text-[10px] font-mono text-gray-500 mt-1">¡Crea un nuevo objetivo arriba para comenzar a acumular fondos!</p>
+          <p className="text-[10px] text-gray-500 mt-1">¡Crea un nuevo objetivo arriba para comenzar a acumular fondos!</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-3.5">
