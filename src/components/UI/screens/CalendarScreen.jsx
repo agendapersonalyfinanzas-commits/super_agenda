@@ -118,8 +118,17 @@ export default function CalendarScreen() {
   }, []);
 
   const handleAddTask = async () => {
+    const hoyStr = new Date().toISOString().split('T')[0];
+
     if (!newTaskText.trim() || !newTaskDate) {
       alert("Por favor ingresa un título y selecciona una fecha.");
+      return;
+    }
+
+    // Validación: Las tareas normales de agenda no permiten fechas pasadas,
+    // pero los pagos/cobros (tanto eventuales como recurrentes) SÍ lo permiten para control financiero.
+    if (!esPagoProgramado && newTaskDate < hoyStr) {
+      alert("Las actividades normales de la agenda no se pueden programar en fechas pasadas.");
       return;
     }
     
@@ -188,8 +197,8 @@ export default function CalendarScreen() {
       triggerSuccess('Actividad eliminada de la nube');
       fetchActivities();
     } catch (error) {
-      console.error("Error al eliminar:", error.message);
-      alert("Hubo un error al eliminar.");
+      console.error("Error al eliminar:", error);
+      alert(`No se pudo eliminar: ${error.message || JSON.stringify(error)}`);
     }
   };
 
