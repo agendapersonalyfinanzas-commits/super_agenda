@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import './App.css'; // 👈 Importación de estilos globales y animaciones
 
+// --- IMPORTACIÓN OFFLINE SYNC ---
+import { procesarColaOffline } from './utils/offlineSync';
+
 // Importación de pantallas y navegación
 import DashboardScreen from './components/UI/screens/DashboardScreen.jsx';
 import CalendarScreen from './components/UI/screens/CalendarScreen.jsx';
@@ -38,6 +41,24 @@ export default function App() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const [isRegistering, setIsRegistering] = useState(false);
+
+  // 🌟 SISTEMA DE SINCRONIZACIÓN OFFLINE
+  useEffect(() => {
+    // 1. Procesa la cola local inmediatamente si hay tareas pendientes guardadas de antes
+    procesarColaOffline();
+
+    // 2. Escucha cuando regrese la conexión a internet para sincronizar de inmediato
+    const handleOnline = () => {
+      console.log('🌐 Conexión restablecida. Ejecutando sincronización en segundo plano...');
+      procesarColaOffline();
+    };
+
+    window.addEventListener('online', handleOnline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+    };
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {

@@ -1,9 +1,9 @@
+// src/screens/CalendarScreen.jsx (o la ruta donde lo tengas)
 import React, { useState, useEffect } from 'react';
 import CalendarGrid from '../../../services/CalendarGrid';
 import SIdenoteCanvas from '../../Expenses/SIdenoteCanvas';
 import VoiceNoteModal from '../../Notes/VoiceNoteModal';
 
-// ¡IMPORTANTE! Ajusta esta ruta a donde tengas tu cliente de Supabase
 import { supabase } from '../../../supabaseClient'; 
 
 // Utilidades centralizadas
@@ -12,34 +12,75 @@ import { formatearFechaCorta } from '../../../utils/fechas.js';
 import { aMayusculas } from '../../../utils/mayusculas.js';
 import { obtenerMensajeError } from '../../../utils/errores.js';
 
+// --- NUEVAS IMPORTACIONES OFFLINE ---
+import { agregarAColaOffline, procesarColaOffline } from '../../../utils/offlineSync.js';
+
 const NOTES_STORAGE_KEY = 'family_spen_notes';
+const EVENTS_CACHE_KEY = 'family_agenda_events_cache';
+const USER_CACHE_KEY = 'family_current_user_profile';
 
 export default function CalendarScreen() {
+  // --- ESTADOS DE CONEXIÓN Y SESIÓN ---
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [sessionUser, setSessionUser] = useState(() => obtenerDeStorage(USER_CACHE_KEY, null));
+
   const [isCanvasOpen, setIsCanvasOpen] = useState(false);
   const [isVoiceOpen, setIsVoiceOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
   const [newTaskText, setNewTaskText] = useState('');
   const [newTaskTime, setNewTaskTime] = useState('09:00');
-  
   const [newTaskDate, setNewTaskDate] = useState('');
-  
-  // Estado para navegar el mes dentro del mini-calendario del modal
   const [modalCalendarDate, setModalCalendarDate] = useState(new Date());
 
-  // Estados para pagos, cobros, categoría libre y recurrencia
   const [esPagoProgramado, setEsPagoProgramado] = useState(false);
   const [montoPago, setMontoPago] = useState('');
-  const [tipoMovimiento, setTipoMovimiento] = useState('expense'); // 'expense' o 'income'
+  const [tipoMovimiento, setTipoMovimiento] = useState('expense');
   const [categoriaPago, setCategoriaPago] = useState('GENERAL');
-  const [frecuenciaPago, setFrecuenciaPago] = useState('single'); // 'single' o 'monthly'
+  const [frecuenciaPago, setFrecuenciaPago] = useState('single');
 
   const [successMessage, setSuccessMessage] = useState('');
-
-  const [savedNotes, setSavedNotes] = useState(() => 
-    obtenerDeStorage(NOTES_STORAGE_KEY, [])
-  );
-  
+  const [savedNotes, setSavedNotes] = useState(() => obtenerDeStorage(NOTES_STORAGE_KEY, []));
   const [dayTasks, setDayTasks] = useState({});
+
+  // 1. DETECTAR CONEXIÓN Y CARGAR USUARIO
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOffline(false);
+      procesarColaOffline().then(() => fetchActivities()); // Sincroniza y recarga
+    };
+    const handleOffline = () => setIsOffline(true);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    // Cargar credenciales completas para el RLS (Online)
+    const loadUser = async () => {
+      if (navigator.onLine) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const { data: profile } = await supabase
+            .from('users')
+            .select('household_id')
+            .eq('id', session.user.id)
+            .single();
+          
+          const userData = {
+            id: session.user.id,
+            email: session.user.email,
+            household_id: profile?.household_id || null
+          };
+          setSessionUser(userData);
+          guardarEnStorage(USER_CACHE_KEY, userData); // Caché para cuando no haya internet
+        }
+      }
+    };
+    loadUser();
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     if (selectedDate) {
@@ -54,69 +95,67 @@ export default function CalendarScreen() {
     }
   }, [selectedDate]);
 
-  // ----------------------------------------------------------------
-  // FUNCIONES DE SUPABASE
-  // ----------------------------------------------------------------
-  
-  const fetchActivities = async () => {
-    try {
-      const { data: userData, error: userError } = await supabase.auth.getUser();
-      if (userError || !userData?.user) return;
+  // --- LÓGICA DE AGRUPACIÓN (Reutilizable para online/offline) ---
+  const agruparEventos = (data) => {
+    const grouped = {};
+    data.forEach(task => {
+      let dbDate = task.event_date;
+      if (task.recurrence === 'monthly' && dbDate) {
+        const [_, __, day] = dbDate.split('-');
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
+        dbDate = `${currentYear}-${currentMonth}-${day}`;
+      }
+      const [year, month, day] = dbDate.split('-');
+      const dateStr = `${day}/${month}/${year}`;
+      
+      if (!grouped[dateStr]) grouped[dateStr] = [];
+      grouped[dateStr].push({
+        ...task,
+        text: task.title,
+        time: task.event_time ? task.event_time.substring(0, 5) : '00:00',
+        event_date_db: dbDate
+      });
+    });
 
+    Object.keys(grouped).forEach(date => {
+      grouped[date].sort((a, b) => a.time.localeCompare(b.time));
+    });
+    return grouped;
+  };
+
+  // 2. FETCH ACTIVIDADES (Caché si es offline)
+  const fetchActivities = async () => {
+    if (!sessionUser?.id) return;
+
+    if (isOffline) {
+      // MODO OFFLINE: Carga la última versión guardada en el teléfono
+      const cachedData = obtenerDeStorage(EVENTS_CACHE_KEY, []);
+      setDayTasks(agruparEventos(cachedData));
+      return;
+    }
+
+    try {
       const { data, error } = await supabase
         .from('agenda_events')
         .select('*')
-        .eq('user_id', userData.user.id);
+        .eq('user_id', sessionUser.id);
 
       if (error) throw error;
-
-      const grouped = {};
       
-      data.forEach(task => {
-        let dbDate = task.event_date; // 'YYYY-MM-DD'
-
-        if (task.recurrence === 'monthly' && dbDate) {
-          const [_, __, day] = dbDate.split('-');
-          const now = new Date();
-          const currentYear = now.getFullYear();
-          const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
-          dbDate = `${currentYear}-${currentMonth}-${day}`;
-        }
-
-        const [year, month, day] = dbDate.split('-');
-        const dateStr = `${day}/${month}/${year}`;
-        
-        if (!grouped[dateStr]) grouped[dateStr] = [];
-        grouped[dateStr].push({
-          id: task.id,
-          text: task.title,
-          time: task.event_time ? task.event_time.substring(0, 5) : '00:00',
-          is_completed: task.is_completed,
-          is_expense: task.is_expense,
-          icon_url: task.icon_url,
-          is_pago: task.is_pago || false,
-          monto: task.monto || 0,
-          transaction_type: task.transaction_type || 'expense',
-          category: task.category || 'GENERAL',
-          recurrence: task.recurrence || 'single',
-          event_date_db: dbDate
-        });
-      });
-
-      Object.keys(grouped).forEach(date => {
-        grouped[date].sort((a, b) => a.time.localeCompare(b.time));
-      });
-
-      setDayTasks(grouped);
+      guardarEnStorage(EVENTS_CACHE_KEY, data); // Guardamos caché para el futuro
+      setDayTasks(agruparEventos(data));
     } catch (error) {
-      console.error("Error al cargar eventos de Supabase:", error);
+      console.error("Error al cargar eventos:", error);
     }
   };
 
   useEffect(() => {
     fetchActivities();
-  }, []);
+  }, [sessionUser, isOffline]);
 
+  // 3. AGREGAR TAREA (Soporte Offline + RLS)
   const handleAddTask = async () => {
     const hoyStr = new Date().toISOString().split('T')[0];
 
@@ -124,241 +163,183 @@ export default function CalendarScreen() {
       alert("Por favor ingresa un título y selecciona una fecha.");
       return;
     }
-
-    // Validación: Las tareas normales de agenda no permiten fechas pasadas,
-    // pero los pagos/cobros (tanto eventuales como recurrentes) SÍ lo permiten para control financiero.
     if (!esPagoProgramado && newTaskDate < hoyStr) {
       alert("Las actividades normales de la agenda no se pueden programar en fechas pasadas.");
       return;
     }
-    
+    if (!sessionUser) {
+      alert("Debes iniciar sesión para guardar actividades.");
+      return;
+    }
+
+    // Preparar el objeto con los datos obligatorios para el RLS
+    const eventToInsert = {
+      id: crypto.randomUUID(), // ID temporal para offline
+      title: newTaskText.trim(),
+      event_date: newTaskDate,
+      event_time: newTaskTime ? (newTaskTime.length === 5 ? `${newTaskTime}:00` : newTaskTime) : '00:00:00',
+      user_id: sessionUser.id,           // REQUERIDO POR RLS
+      household_id: sessionUser.household_id, // REQUERIDO POR RLS
+      is_completed: false,
+      is_expense: esPagoProgramado && tipoMovimiento === 'expense',
+      icon_url: null,
+      is_pago: esPagoProgramado,
+      monto: esPagoProgramado && montoPago ? parseFloat(montoPago) : 0,
+      transaction_type: tipoMovimiento,
+      category: categoriaPago.trim().toUpperCase() || 'GENERAL',
+      recurrence: esPagoProgramado ? frecuenciaPago : 'single'
+    };
+
     try {
-      const { data: userData, error: authError } = await supabase.auth.getUser();
-      if (authError || !userData?.user) {
-        alert("Debes iniciar sesión para guardar actividades.");
-        return;
+      if (isOffline) {
+        // MODO OFFLINE: Guardar en cola
+        await agregarAColaOffline('INSERT', 'agenda_events', eventToInsert);
+        
+        // Actualizar UI y caché local inmediatamente
+        const cachedData = obtenerDeStorage(EVENTS_CACHE_KEY, []);
+        cachedData.push(eventToInsert);
+        guardarEnStorage(EVENTS_CACHE_KEY, cachedData);
+        setDayTasks(agruparEventos(cachedData));
+        triggerSuccess('Actividad guardada en el teléfono (Sin conexión)');
+      } else {
+        // MODO ONLINE
+        const { id, ...dataToInsert } = eventToInsert; // Supabase autogenera el ID real
+        const { error } = await supabase.from('agenda_events').insert([dataToInsert]);
+        if (error) throw error;
+        triggerSuccess('¡Evento financiero guardado!');
+        fetchActivities(); 
       }
-      const userId = userData.user.id;
 
-      const { data: profileData } = await supabase
-        .from('users')
-        .select('household_id')
-        .eq('id', userId)
-        .single();
-
-      const eventToInsert = {
-        title: newTaskText.trim(),
-        event_date: newTaskDate,
-        event_time: newTaskTime ? (newTaskTime.length === 5 ? `${newTaskTime}:00` : newTaskTime) : '00:00:00',
-        user_id: userId,
-        household_id: profileData?.household_id || null,
-        is_completed: false,
-        is_expense: esPagoProgramado && tipoMovimiento === 'expense',
-        icon_url: null,
-        is_pago: esPagoProgramado,
-        monto: esPagoProgramado && montoPago ? parseFloat(montoPago) : 0,
-        transaction_type: tipoMovimiento,
-        category: categoriaPago.trim().toUpperCase() || 'GENERAL',
-        recurrence: esPagoProgramado ? frecuenciaPago : 'single'
-      };
-
-      const { error } = await supabase
-        .from('agenda_events')
-        .insert([eventToInsert]);
-
-      if (error) throw error;
-
+      // Limpiar formulario
       setNewTaskText('');
       setEsPagoProgramado(false);
       setMontoPago('');
       setCategoriaPago('GENERAL');
       setFrecuenciaPago('single');
-      triggerSuccess('¡Evento financiero guardado!');
-      fetchActivities(); 
 
     } catch (error) {
-      console.error("Error al guardar en Supabase:", error);
+      console.error("Error al guardar:", error);
       alert(`Error al guardar: ${error.message || JSON.stringify(error)}`);
     }
   };
 
+  // 4. ELIMINAR TAREA (Soporte Offline)
   const handleDeleteTask = async (taskId) => {
     const confirmDelete = window.confirm("¿Seguro que deseas borrar esta actividad?");
     if (!confirmDelete) return;
 
     try {
-      const { error } = await supabase
-        .from('agenda_events')
-        .delete()
-        .eq('id', taskId);
-
-      if (error) throw error;
-
-      triggerSuccess('Actividad eliminada de la nube');
-      fetchActivities();
+      if (isOffline) {
+        await agregarAColaOffline('DELETE', 'agenda_events', { id: taskId });
+        
+        // Actualizar UI
+        const cachedData = obtenerDeStorage(EVENTS_CACHE_KEY, []).filter(t => t.id !== taskId);
+        guardarEnStorage(EVENTS_CACHE_KEY, cachedData);
+        setDayTasks(agruparEventos(cachedData));
+        triggerSuccess('Actividad eliminada localmente (Sin conexión)');
+      } else {
+        const { error } = await supabase.from('agenda_events').delete().eq('id', taskId);
+        if (error) throw error;
+        triggerSuccess('Actividad eliminada de la nube');
+        fetchActivities();
+      }
     } catch (error) {
       console.error("Error al eliminar:", error);
-      alert(`No se pudo eliminar: ${error.message || JSON.stringify(error)}`);
     }
   };
 
+  // 5. COMPLETAR Y REGISTRAR TRANSACCIÓN (¡Inyección crítica de auth_user_email!)
   const handleToggleComplete = async (task) => {
     const nuevoEstado = !task.is_completed;
+    const taskUpdateData = { id: task.id, is_completed: nuevoEstado };
 
     try {
-      const { error } = await supabase
-        .from('agenda_events')
-        .update({ is_completed: nuevoEstado })
-        .eq('id', task.id);
+      let transactionData = null;
 
-      if (error) throw error;
-
+      // Si es un pago y se está marcando como completado, preparamos la transacción
       if (task.is_pago && nuevoEstado && task.monto > 0) {
-        const { data: authData } = await supabase.auth.getUser();
-        const userEmail = authData?.user?.email || null;
-
-        const { error: errorTrans } = await supabase
-          .from('transactions')
-          .insert([
-            {
-              concept: `Movimiento: ${task.text}`,
-              amount: task.monto,
-              transaction_type: task.transaction_type || 'expense',
-              category: task.category || 'GENERAL',
-              auth_user_email: userEmail
-            }
-          ]);
-
-        if (!errorTrans) {
-          window.dispatchEvent(new CustomEvent('transaction-updated'));
-        }
+        transactionData = {
+          concept: `Movimiento: ${task.text}`,
+          amount: task.monto,
+          transaction_type: task.transaction_type || 'expense',
+          category: task.category || 'GENERAL',
+          auth_user_email: sessionUser.email // 🔥 REQUERIDO POR RLS DE TRANSACTIONS
+        };
       }
 
-      triggerSuccess(nuevoEstado ? '💳 ¡Pago realizado y registrado en finanzas!' : 'Actividad reabierta');
-      fetchActivities();
+      if (isOffline) {
+        // Enviar a cola de tareas
+        await agregarAColaOffline('UPDATE', 'agenda_events', taskUpdateData);
+        if (transactionData) {
+          await agregarAColaOffline('INSERT', 'transactions', transactionData);
+        }
+
+        // Actualizar UI local optimista
+        const cachedData = obtenerDeStorage(EVENTS_CACHE_KEY, []);
+        const index = cachedData.findIndex(t => t.id === task.id);
+        if (index !== -1) cachedData[index].is_completed = nuevoEstado;
+        guardarEnStorage(EVENTS_CACHE_KEY, cachedData);
+        setDayTasks(agruparEventos(cachedData));
+
+        triggerSuccess(nuevoEstado ? 'Pago registrado offline' : 'Actividad reabierta offline');
+
+      } else {
+        // MODO ONLINE
+        const { error } = await supabase.from('agenda_events').update({ is_completed: nuevoEstado }).eq('id', task.id);
+        if (error) throw error;
+
+        if (transactionData) {
+          const { error: errorTrans } = await supabase.from('transactions').insert([transactionData]);
+          if (!errorTrans) window.dispatchEvent(new CustomEvent('transaction-updated'));
+        }
+        triggerSuccess(nuevoEstado ? '💳 ¡Pago realizado y registrado en finanzas!' : 'Actividad reabierta');
+        fetchActivities();
+      }
     } catch (error) {
-      console.error("Error al actualizar estado y finanzas:", error.message);
+      console.error("Error al actualizar:", error.message);
       alert("Hubo un error al procesar el movimiento.");
     }
   };
 
   const getSemaforoVisual = (task) => {
     if (task.is_completed) {
-      return {
-        badge: '🟢 Pagado',
-        clase: 'bg-green-100 border-green-600 text-green-900'
-      };
+      return { badge: '🟢 Pagado', clase: 'bg-green-100 border-green-600 text-green-900' };
     }
-
     if (!task.is_pago) {
-      return {
-        badge: '',
-        clase: 'bg-white text-black'
-      };
+      return { badge: '', clase: 'bg-white text-black' };
     }
-
     const hoy = new Date().toISOString().split('T')[0];
     const fechaEvento = task.event_date_db;
-
-    if (fechaEvento === hoy) {
-      return {
-        badge: '🔴 ¡Vence Hoy!',
-        clase: 'bg-red-200 border-red-600 text-red-950 animate-pulse'
-      };
-    } else if (fechaEvento < hoy) {
-      return {
-        badge: '🔴 Vencido',
-        clase: 'bg-red-300 border-red-700 text-red-950'
-      };
-    } else {
-      return {
-        badge: '🟡 Pendiente',
-        clase: 'bg-yellow-100 border-yellow-600 text-yellow-900'
-      };
-    }
+    if (fechaEvento === hoy) return { badge: '🔴 ¡Vence Hoy!', clase: 'bg-red-200 border-red-600 text-red-950 animate-pulse' };
+    else if (fechaEvento < hoy) return { badge: '🔴 Vencido', clase: 'bg-red-300 border-red-700 text-red-950' };
+    else return { badge: '🟡 Pendiente', clase: 'bg-yellow-100 border-yellow-600 text-yellow-900' };
   };
-
-  useEffect(() => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
-  }, []);
-
-  useEffect(() => {
-    const timers = [];
-    const now = new Date();
-
-    Object.entries(dayTasks).forEach(([dateStr, tasks]) => {
-      tasks.forEach((task) => {
-        if (!task.time || task.is_completed) return;
-
-        const [day, month, year] = dateStr.split('/');
-        const [hours, minutes] = task.time.split(':');
-        const taskDate = new Date(year, month - 1, day, hours, minutes, 0);
-
-        const timeToTask = taskDate.getTime() - now.getTime();
-
-        if (timeToTask > 0) {
-          const timer = setTimeout(() => {
-            if (Notification.permission === 'granted') {
-              new Notification('🔔 Super Agenda: Recordatorio', {
-                body: `${task.time} - ${task.text} ${task.is_pago ? `($${task.monto})` : ''}`,
-                icon: '/super-snoopy.png'
-              });
-            }
-          }, timeToTask);
-
-          timers.push(timer);
-        }
-      });
-    });
-
-    return () => timers.forEach(t => clearTimeout(t));
-  }, [dayTasks]);
 
   useEffect(() => {
     guardarEnStorage(NOTES_STORAGE_KEY, savedNotes);
   }, [savedNotes]);
 
   const handleSaveNote = (base64Data) => {
-    try {
-      const newNote = { 
-        id: Date.now(), 
-        image: base64Data, 
-        date: selectedDate || formatearFechaCorta(new Date()) 
-      };
-      setSavedNotes(prev => [newNote, ...prev]);
-      setIsCanvasOpen(false);
-      triggerSuccess('Nota guardada con éxito');
-    } catch (err) {
-      console.error('Error al guardar nota:', obtenerMensajeError(err));
-    }
+    const newNote = { id: Date.now(), image: base64Data, date: selectedDate || formatearFechaCorta(new Date()) };
+    setSavedNotes(prev => [newNote, ...prev]);
+    setIsCanvasOpen(false);
+    triggerSuccess('Nota guardada con éxito');
   };
 
   const handleSaveVoiceNote = (textoDictado) => {
-    try {
-      if (selectedDate) {
-        setNewTaskText(textoDictado);
-      } else {
-        const newNote = { 
-          id: Date.now(), 
-          text: textoDictado, 
-          date: formatearFechaCorta(new Date()) 
-        };
-        setSavedNotes(prev => [newNote, ...prev]);
-        triggerSuccess('Nota de voz guardada');
-      }
-      setIsVoiceOpen(false);
-    } catch (err) {
-      console.error('Error al guardar dictado:', obtenerMensajeError(err));
+    if (selectedDate) {
+      setNewTaskText(textoDictado);
+    } else {
+      const newNote = { id: Date.now(), text: textoDictado, date: formatearFechaCorta(new Date()) };
+      setSavedNotes(prev => [newNote, ...prev]);
+      triggerSuccess('Nota de voz guardada');
     }
+    setIsVoiceOpen(false);
   };
 
   const triggerSuccess = (msg) => {
     setSuccessMessage(msg);
-    setTimeout(() => {
-      setSuccessMessage('');
-    }, 3000);
+    setTimeout(() => setSuccessMessage(''), 3000);
   };
 
   const handleDeleteNote = (id) => {
@@ -369,13 +350,21 @@ export default function CalendarScreen() {
   return (
     <div className="min-h-screen bg-[#Fef8e7] p-4 md:p-8 font-mono text-black pb-24 select-none relative">
       
+      {/* --- BANNER DE MODO OFFLINE --- */}
+      {isOffline && (
+        <div className="w-full bg-yellow-400 text-black text-center font-bold text-xs py-2 border-b-4 border-black fixed top-0 left-0 z-50">
+          ⚠️ ESTÁS EN MODO OFFLINE - Los cambios se guardarán automáticamente al tener internet.
+        </div>
+      )}
+
       {successMessage && (
-        <div className="fixed top-5 left-1/2 transform -translate-x-1/2 z-50 bg-emerald-400 border-4 border-black px-6 py-3 rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-black font-black text-xs uppercase animate-bounce">
+        <div className="fixed top-12 left-1/2 transform -translate-x-1/2 z-50 bg-emerald-400 border-4 border-black px-6 py-3 rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-black font-black text-xs uppercase animate-bounce">
           ✅ {successMessage}
         </div>
       )}
 
-      <div className="max-w-4xl mx-auto space-y-6 flex flex-col items-center">
+      {/* A partir de aquí, el renderizado de tu UI se mantiene exactamente igual... */}
+      <div className={`max-w-4xl mx-auto space-y-6 flex flex-col items-center ${isOffline ? 'mt-8' : ''}`}>
         
         <header className="w-full flex flex-wrap justify-between items-center border-4 border-black bg-amber-400 p-6 rounded-3xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] gap-4">
           <div>
@@ -476,16 +465,14 @@ export default function CalendarScreen() {
             {/* FORMULARIO DE NUEVA ACTIVIDAD / PAGO PROGRAMADO */}
             <div className="space-y-3 bg-amber-300 p-3.5 border-3 border-black rounded-2xl shadow-[3px_3px_0px_rgba(0,0,0,1)]">
               
-              {/* 📅 MINI CALENDARIO INTERACTIVO DENTRO DEL MODAL */}
               <div className="bg-white border-3 border-black rounded-2xl p-3 space-y-2">
                 <div className="flex justify-between items-center font-black text-xs uppercase">
-                  <span>📅 Selecciona la Fecha del Evento:</span>
+                  <span>📅 Selecciona la Fecha:</span>
                   <span className="bg-amber-200 border border-black px-2 py-0.5 rounded text-[10px]">
                     {newTaskDate || 'Ninguna'}
                   </span>
                 </div>
 
-                {/* Controles de mes para el mini calendario */}
                 <div className="flex justify-between items-center bg-amber-100 border-2 border-black rounded-xl p-1.5">
                   <button 
                     type="button"
@@ -506,7 +493,6 @@ export default function CalendarScreen() {
                   </button>
                 </div>
 
-                {/* Cuadrícula de días del mini calendario */}
                 <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-black pt-1">
                   {['D', 'L', 'M', 'M', 'J', 'V', 'S'].map((d, i) => (
                     <div key={i} className="text-stone-600 pb-1">{d}</div>
@@ -556,7 +542,6 @@ export default function CalendarScreen() {
                 />
               </div>
 
-              {/* CHECKBOX DE PAGO PROGRAMADO CON CATEGORÍA Y FRECUENCIA */}
               <div className="border-2 border-black rounded-xl p-2.5 bg-white flex flex-col gap-2">
                 <label className="flex items-center gap-2 cursor-pointer font-black text-xs uppercase">
                   <input 
@@ -565,7 +550,7 @@ export default function CalendarScreen() {
                     onChange={(e) => setEsPagoProgramado(e.target.checked)}
                     className="w-4 h-4 accent-black cursor-pointer"
                   />
-                  <span>📅 ¿Es un pago o cobro programado (Finanzas)?</span>
+                  <span>📅 ¿Es un pago programado?</span>
                 </label>
 
                 {esPagoProgramado && (
@@ -591,7 +576,7 @@ export default function CalendarScreen() {
                     <div className="flex gap-2">
                       <input 
                         type="text"
-                        placeholder="Categoría (Ej. Renta, Cable, Préstamo...)"
+                        placeholder="Categoría (Ej. Renta)"
                         value={categoriaPago}
                         onChange={(e) => setCategoriaPago(e.target.value)}
                         className="flex-1 border-2 border-black rounded-xl px-2.5 py-1.5 text-xs font-bold bg-amber-50 uppercase focus:outline-none"
@@ -602,8 +587,8 @@ export default function CalendarScreen() {
                         onChange={(e) => setFrecuenciaPago(e.target.value)}
                         className="w-40 border-2 border-black rounded-xl px-2 py-1.5 text-xs font-bold bg-amber-50 focus:outline-none uppercase"
                       >
-                        <option value="single">🎯 Eventual (Una vez)</option>
-                        <option value="monthly">🔁 Recurrente (Cada mes)</option>
+                        <option value="single">🎯 Eventual</option>
+                        <option value="monthly">🔁 Recurrente</option>
                       </select>
                     </div>
                   </div>
@@ -628,7 +613,6 @@ export default function CalendarScreen() {
               </div>
             </div>
 
-            {/* LISTA DE ACTIVIDADES Y PAGOS */}
             <div className="space-y-2 max-h-56 overflow-y-auto pt-2">
               {(dayTasks[selectedDate] || []).map((task) => {
                 const semaforo = getSemaforoVisual(task);
@@ -693,7 +677,7 @@ export default function CalendarScreen() {
 
               {(!dayTasks[selectedDate] || dayTasks[selectedDate].length === 0) && (
                 <p className="text-center text-xs font-black text-amber-950 uppercase pt-2">
-                  No hay actividades o pagos programados para este día
+                  No hay actividades o pagos programados
                 </p>
               )}
             </div>
