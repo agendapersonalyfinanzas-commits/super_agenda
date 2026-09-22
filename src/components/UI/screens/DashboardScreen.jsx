@@ -6,6 +6,8 @@ import { supabase } from '../../../supabaseClient';
 // Utilidades
 import { formatearMoneda } from '../../../utils/moneda.js';
 import { exportTransactionsToPDF } from '../../../utils/pdfExportPlugin.js';
+import { guardarEnStorage, obtenerDeStorage } from '../../../utils/storage.js';
+import { agregarAColaOffline, procesarColaOffline } from '../../../utils/offlineSync.js';
 
 // --- CUSTOM HOOKS MODULARES
 import { usePlayerManagement } from '../../../hooks/usePlayerManagement.js';
@@ -72,13 +74,18 @@ const PRESET_ICONS = [
   '/snoppy-alquiler.png'
 ];
 
+// Claves para el Caché Local
+const USER_CACHE_KEY = 'family_current_user_profile';
+const PROFILES_CACHE_KEY = 'family_profiles_cache';
+
 export default function DashboardScreen() {
   const [activeTab, setActiveTab] = useState('finances');
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => obtenerDeStorage(USER_CACHE_KEY, null));
   const [auditorMode, setAuditorMode] = useState(false);
   const [selectedAuditedUser, setSelectedAuditedUser] = useState(null);
-  const [usersList, setUsersList] = useState([]); // 🌟 Lista real de perfiles registrados
+  const [usersList, setUsersList] = useState(() => obtenerDeStorage(PROFILES_CACHE_KEY, [])); // 🌟 Lista de perfiles con respaldo
   const [isOcrOpen, setIsOcrOpen] = useState(false);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
   // Estados locales para modales
   const [activeImageTarget, setActiveImageTarget] = useState(null);
@@ -86,6 +93,23 @@ export default function DashboardScreen() {
   const [customAmount, setCustomAmount] = useState('');
   const [customCategory, setCustomCategory] = useState('VARIOS');
   const [selectedIcon, setSelectedIcon] = useState(PRESET_ICONS[0]);
+
+  // --- ESCUCHADOR DE MODO OFFLINE / ONLINE ---
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOffline(false);
+      procesarColaOffline();
+    };
+    const handleOffline = () => setIsOffline(true);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   // --- 1. HOOK DE JUGADORES ---
   const playerManager = usePlayerManagement();
@@ -159,13 +183,22 @@ export default function DashboardScreen() {
     };
   }, [txManager]);
 
-  // Obtener usuario autenticado de Supabase y cargar lista de perfiles si es auditor
+  // Obtener usuario autenticado de Supabase y cargar lista de perfiles si es auditor (con soporte Offline)
   useEffect(() => {
     const fetchUserAndProfiles = async () => {
+      if (!navigator.onLine) {
+        const cachedUser = obtenerDeStorage(USER_CACHE_KEY, null);
+        const cachedProfiles = obtenerDeStorage(PROFILES_CACHE_KEY, []);
+        if (cachedUser) setCurrentUser(cachedUser);
+        if (cachedProfiles.length > 0) setUsersList(cachedProfiles);
+        return;
+      }
+
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
           setCurrentUser(user);
+          guardarEnStorage(USER_CACHE_KEY, user);
 
           if (user.email?.toLowerCase() === 'maestroluisricardo17@gmail.com') {
             const { data: profiles, error } = await supabase
@@ -177,15 +210,20 @@ export default function DashboardScreen() {
             } else if (profiles) {
               console.log('✅ Perfiles cargados con éxito para auditoría:', profiles);
               setUsersList(profiles);
+              guardarEnStorage(PROFILES_CACHE_KEY, profiles);
             }
           }
         }
       } catch (err) {
         console.error('❌ Error inesperado al cargar usuario/perfiles:', err);
+        const cachedUser = obtenerDeStorage(USER_CACHE_KEY, null);
+        const cachedProfiles = obtenerDeStorage(PROFILES_CACHE_KEY, []);
+        if (cachedUser) setCurrentUser(cachedUser);
+        if (cachedProfiles.length > 0) setUsersList(cachedProfiles);
       }
     };
     fetchUserAndProfiles();
-  }, []);
+  }, [isOffline]);
 
   const isMasterAuditor = currentUser?.email === 'maestroluisricardo17@gmail.com';
 
@@ -247,8 +285,15 @@ export default function DashboardScreen() {
   };
 
   return (
-    <div className="min-h-screen bg-[#Fef8e7] p-4 md:p-8 font-mono text-black pb-28 select-none relative">
+    <div className={`min-h-screen bg-[#Fef8e7] p-4 md:p-8 font-mono text-black pb-28 select-none relative ${isOffline ? 'pt-10' : ''}`}>
       
+      {/* --- BANNER OFFLINE --- */}
+      {isOffline && (
+        <div className="w-full bg-yellow-400 text-black text-center font-bold text-xs py-2 border-b-4 border-black fixed top-0 left-0 z-50">
+          ⚠️ ESTÁS EN MODO OFFLINE - Los datos se guardarán localmente y se sincronizarán al conectar.
+        </div>
+      )}
+
       {activeTab === 'games' ? (
         <GamesScreen activeUser={playerManager.activeUser} />
       ) : activeTab === 'agenda' ? (

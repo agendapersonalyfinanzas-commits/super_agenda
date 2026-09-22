@@ -29,7 +29,7 @@ export default function CalendarGrid({ onSelectDay, dayTasks = {} }) {
   };
 
   // 🚦 Semáforo visual financiero de la celda basado en los pagos y eventos
-  const getDaySemaphoreStyle = (tasks, cellDateStr) => {
+  const getDaySemaphoreStyle = (tasks, cellDate) => {
     if (!tasks || tasks.length === 0) return 'bg-amber-50 hover:bg-amber-200 border-black';
 
     const allCompleted = tasks.every(t => t.is_completed);
@@ -37,11 +37,7 @@ export default function CalendarGrid({ onSelectDay, dayTasks = {} }) {
       return 'bg-emerald-200 text-black border-emerald-700';
     }
 
-    const [day, monthNum, yearNum] = cellDateStr.split('/');
-    const taskDate = new Date(yearNum, monthNum - 1, day);
-    taskDate.setHours(0, 0, 0, 0);
-
-    const diffTime = taskDate.getTime() - today.getTime();
+    const diffTime = cellDate.getTime() - today.getTime();
     const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
 
     const hasUnpaidPayment = tasks.some(t => t.is_pago && !t.is_completed);
@@ -67,6 +63,7 @@ export default function CalendarGrid({ onSelectDay, dayTasks = {} }) {
           <button
             type="button"
             onClick={handlePrevMonth}
+            aria-label="Mes anterior"
             className="flex-1 px-3 py-2 bg-amber-400 border-4 border-black rounded-xl font-black text-xs uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none cursor-pointer truncate"
           >
             ◀ {aMayusculas('Anterior')}
@@ -74,6 +71,7 @@ export default function CalendarGrid({ onSelectDay, dayTasks = {} }) {
           <button
             type="button"
             onClick={handleNextMonth}
+            aria-label="Mes siguiente"
             className="flex-1 px-3 py-2 bg-amber-400 border-4 border-black rounded-xl font-black text-xs uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none cursor-pointer truncate"
           >
             {aMayusculas('Siguiente')} ▶
@@ -111,20 +109,19 @@ export default function CalendarGrid({ onSelectDay, dayTasks = {} }) {
           // Suma total de los montos financieros programados en el día
           const totalMonto = tasksForDay.reduce((acc, t) => acc + (t.is_pago ? (Number(t.monto) || 0) : 0), 0);
           
-          const cellStyle = getDaySemaphoreStyle(tasksForDay, formattedDate);
+          const cellStyle = getDaySemaphoreStyle(tasksForDay, cellDate);
 
           return (
             <button
               key={dayNum}
               type="button"
               onClick={() => onSelectDay && onSelectDay(formattedDate)}
-              className={`h-20 sm:h-24 border-2 rounded-xl font-black text-xs flex flex-col justify-between p-1.5 relative transition-all cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none ${
-                isToday
-                  ? 'bg-sky-400 text-black border-3 border-black scale-105' 
-                  : cellStyle
+              aria-label={`Día ${dayNum} de ${meses[month]} de ${year}`}
+              className={`h-20 sm:h-24 border-2 rounded-xl font-black text-xs flex flex-col justify-between p-1.5 relative transition-all cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none ${cellStyle} ${
+                isToday ? 'ring-4 ring-sky-500 scale-105 z-10' : ''
               }`}
             >
-              {/* Número del día e indicador de HOY */}
+              {/* Número del día e indicador de HOY en NEGRO */}
               <div className="w-full flex justify-between items-center">
                 <span className="text-xs sm:text-sm font-black">{dayNum}</span>
                 {isToday && (
@@ -138,7 +135,7 @@ export default function CalendarGrid({ onSelectDay, dayTasks = {} }) {
               {hasTasks ? (
                 <div className="w-full flex flex-col gap-0.5 overflow-hidden text-left">
                   {totalMonto > 0 && (
-                    <div className="bg-black text-amber-300 text-[9px] sm:text-[10px] px-1 py-0.5 rounded font-black truncate text-center shadow-xs">
+                    <div className="bg-black text-amber-300 text-[9px] sm:text-[10px] px-1 py-0.5 rounded font-black truncate text-center shadow-sm">
                       ${totalMonto.toLocaleString()}
                     </div>
                   )}
