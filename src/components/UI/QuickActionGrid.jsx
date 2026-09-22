@@ -1,8 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import QuickExpenseButton from './QuickExpenseButton';
-import { PRESET_MAP } from '../UI/Icons'; // 👈 Asegúrate de que la ruta apunte correctamente a tu archivo Icons.jsx
+import { PRESET_MAP } from '../UI/Icons';
+import { supabase } from '../../supabaseClient';
+import { obtenerDeStorage } from '../../utils/storage.js';
+import CategoryManager from '../CategoryManager';
 
-// Función auxiliar para resolver la ruta de la imagen sin importar cómo esté guardada
+// Función auxiliar para resolver la ruta de la imagen
 const getIconSrc = (iconValue) => {
   if (!iconValue) return '/charlie-market.png';
   if (iconValue.startsWith('data:image')) return iconValue;
@@ -16,7 +19,6 @@ const getIconSrc = (iconValue) => {
 };
 
 const STATIC_PRESETS = Object.values(PRESET_MAP);
-
 const DEFAULT_PRESET_ICONS = Array.from(new Set(STATIC_PRESETS));
 
 export default function QuickActionGrid(props) {
@@ -35,19 +37,51 @@ export default function QuickActionGrid(props) {
 
   const [isEditMode, setIsEditMode] = useState(false);
 
+  // Estados para configurar botón
   const [configOpen, setConfigOpen] = useState(false);
   const [editingAction, setEditingAction] = useState(null);
   const [btnName, setBtnName] = useState('');
   const [btnCat, setBtnCat] = useState('VARIOS');
   const [btnIcon, setBtnIcon] = useState(DEFAULT_PRESET_ICONS[0]);
+  const [isConfigCatOpen, setIsConfigCatOpen] = useState(false); // 🟢 Dropdown personalizado para config
 
+  // Estados para transacción (NUEVO GASTO / INGRESO)
   const [transOpen, setTransOpen] = useState(false);
   const [transAction, setTransAction] = useState(null);
   const [transAmount, setTransAmount] = useState('');
   const [transConcept, setTransConcept] = useState('');
+  const [transCat, setTransCat] = useState('VARIOS');
+  const [isTransCatOpen, setIsTransCatOpen] = useState(false); // 🟢 Dropdown personalizado para transacción
 
-  // 🎯 LÓGICA DE DRAG & DROP ACTIVA SIEMPRE
+  // Categorías dinámicas desde Supabase / Caché local
+  const [categories, setCategories] = useState(() => 
+    obtenerDeStorage('family_categories_cache', [])
+  );
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
+
+  // Drag & Drop
   const [draggedIndex, setDraggedIndex] = useState(null);
+
+  // Cargar categorías reales desde Supabase
+  const fetchCategories = async () => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+    try {
+      const { data, error } = await supabase
+        .from('categories')
+        .select('*')
+        .order('nombre', { ascending: true });
+
+      if (!error && data && data.length > 0) {
+        setCategories(data);
+      }
+    } catch (err) {
+      console.error('Error cargando categorías:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchCategories();
+  }, []);
 
   const handleDragStart = (e, index) => {
     setDraggedIndex(index);
@@ -87,6 +121,7 @@ export default function QuickActionGrid(props) {
       setTransAction(action);
       setTransAmount(action.amount > 0 ? action.amount.toString() : '');
       setTransConcept(action.label || action.name || action.concept || '');
+      setTransCat(action.category || 'VARIOS');
       setTransOpen(true);
     }
   };
@@ -152,7 +187,7 @@ export default function QuickActionGrid(props) {
     const transactionData = {
       amount: finalAmount,
       concept: transConcept.toUpperCase(),
-      category: transAction?.category || 'VARIOS',
+      category: transCat.toUpperCase(),
       type: type
     };
 
@@ -183,7 +218,6 @@ export default function QuickActionGrid(props) {
       <div className="grid grid-cols-3 sm:grid-cols-4 gap-6 pt-2" onDragOver={handleDragOver}>
         {actions.map((action, idx) => {
           const uniqueKey = `${action.id || 'btn'}_${idx}`;
-          // 🌟 Aplicamos getIconSrc para asegurar que la ruta del icono siempre sea válida
           const resolvedAction = {
             ...action,
             icon: getIconSrc(action.icon || action.image),
@@ -224,6 +258,7 @@ export default function QuickActionGrid(props) {
         </div>
       </div>
 
+      {/* MODAL CONFIGURACIÓN BOTÓN */}
       {configOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
           <div className="bg-amber-100 border-4 border-black p-5 rounded-3xl w-full max-w-md shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
@@ -240,23 +275,49 @@ export default function QuickActionGrid(props) {
                     value={btnName}
                     onChange={(e) => setBtnName(e.target.value)}
                     required
-                    className="w-full border-4 border-black p-2 rounded-xl font-bold uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white"
+                    className="w-full border-4 border-black p-2 rounded-xl font-bold uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white text-black"
                   />
                 </div>
-                <div className="flex-1">
-                  <label className="text-xs font-black uppercase text-black">Categoría:</label>
-                  <select
-                    value={btnCat}
-                    onChange={(e) => setBtnCat(e.target.value)}
-                    className="w-full border-4 border-black p-2 rounded-xl font-bold uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white"
+                
+                {/* DROPDOWN RETRO-COMIC PERSONALIZADO PARA CONFIG */}
+                <div className="flex-1 relative">
+                  <label className="text-xs font-black uppercase text-black block mb-1">Categoría:</label>
+                  <button
+                    type="button"
+                    onClick={() => setIsConfigCatOpen(!isConfigCatOpen)}
+                    className="w-full border-4 border-black p-2 rounded-xl font-bold uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white text-black text-xs flex justify-between items-center cursor-pointer"
                   >
-                    <option value="VARIOS">VARIOS</option>
-                    <option value="ALIMENTOS">ALIMENTOS</option>
-                    <option value="TRANSPORTE">TRANSPORTE</option>
-                    <option value="SERVICIOS">SERVICIOS</option>
-                    <option value="SUELDO">SUELDO</option>
-                    <option value="ALQUILER">ALQUILER</option>
-                  </select>
+                    <span className="truncate">{btnCat}</span>
+                    <span className="font-black text-sm">▼</span>
+                  </button>
+
+                  {isConfigCatOpen && (
+                    <div className="absolute left-0 right-0 mt-2 bg-white border-4 border-black rounded-xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] max-h-40 overflow-y-auto z-50">
+                      <div
+                        onClick={() => {
+                          setBtnCat('VARIOS');
+                          setIsConfigCatOpen(false);
+                        }}
+                        className="p-2.5 font-black uppercase text-xs hover:bg-amber-200 cursor-pointer border-b-2 border-black flex items-center gap-2 text-black"
+                      >
+                        <span>📌</span> VARIOS
+                      </div>
+                      {categories
+                        .filter(c => (c.tipo || 'expense').toLowerCase() === (type || 'expense').toLowerCase())
+                        .map((c) => (
+                          <div
+                            key={c.id || c.nombre}
+                            onClick={() => {
+                              setBtnCat(c.nombre);
+                              setIsConfigCatOpen(false);
+                            }}
+                            className="p-2.5 font-black uppercase text-xs hover:bg-amber-200 cursor-pointer border-b-2 border-black flex items-center gap-2 text-black"
+                          >
+                            <span>{c.icono || '📌'}</span> {c.nombre}
+                          </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -287,13 +348,13 @@ export default function QuickActionGrid(props) {
                 <button
                   type="button"
                   onClick={() => setConfigOpen(false)}
-                  className="flex-1 bg-white border-4 border-black py-2 rounded-xl font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 cursor-pointer"
+                  className="flex-1 bg-white border-4 border-black py-2 rounded-xl font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 cursor-pointer text-black"
                 >
                   CANCELAR
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 bg-amber-400 border-4 border-black py-2 rounded-xl font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 cursor-pointer"
+                  className="flex-1 bg-amber-400 border-4 border-black py-2 rounded-xl font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 cursor-pointer text-black"
                 >
                   GUARDAR
                 </button>
@@ -303,6 +364,7 @@ export default function QuickActionGrid(props) {
         </div>
       )}
 
+      {/* 🟢 MODAL DE NUEVO GASTO / NUEVO INGRESO (CON DROPDOWN RETRO-COMIC PERSONALIZADO) */}
       {transOpen && transAction && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div className={`${type === 'expense' ? 'bg-rose-100' : 'bg-green-100'} border-4 border-black p-6 rounded-3xl w-full max-w-sm shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] animate-bounce-short`}>
@@ -310,21 +372,75 @@ export default function QuickActionGrid(props) {
               <img src={getIconSrc(transAction.icon || transAction.image)} alt="icon" className="w-16 h-16 object-cover rounded-full border-4 border-black bg-white" />
               <div>
                 <h2 className="text-xl font-black uppercase text-black">{type === 'expense' ? 'NUEVO GASTO' : 'NUEVO INGRESO'}</h2>
-                <p className="text-xs font-bold text-stone-600">{transAction.category}</p>
               </div>
             </div>
 
             <form onSubmit={saveTransaction} className="flex flex-col gap-4">
+              {/* CONCEPTO */}
               <div className="flex flex-col">
                 <label className="text-sm font-black uppercase mb-1 text-black">Concepto:</label>
                 <input
                   type="text"
                   value={transConcept}
                   onChange={(e) => setTransConcept(e.target.value)}
-                  className="border-4 border-black p-2 rounded-xl text-lg font-bold uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white focus:outline-none focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all"
+                  className="border-4 border-black p-2 rounded-xl text-lg font-bold uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white focus:outline-none focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all text-black"
                 />
               </div>
 
+              {/* CATEGORÍA (DROPDOWN RETRO-COMIC FILTRADO POR TIPO) + BOTÓN DE GESTIÓN */}
+              <div className="flex flex-col relative">
+                <div className="flex justify-between items-center mb-1">
+                  <label className="text-sm font-black uppercase text-black">Categoría:</label>
+                  <button
+                    type="button"
+                    onClick={() => setShowCategoryManager(true)}
+                    className="text-[10px] font-black uppercase bg-amber-300 border-2 border-black px-2 py-0.5 rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-amber-400 active:translate-x-0.5 active:translate-y-0.5 active:shadow-none cursor-pointer text-black"
+                  >
+                    🏷️ Crear / Editar
+                  </button>
+                </div>
+
+                {/* BOTÓN PERSONALIZADO QUE SIMULA EL SELECT */}
+                <button
+                  type="button"
+                  onClick={() => setIsTransCatOpen(!isTransCatOpen)}
+                  className="border-4 border-black p-2.5 rounded-xl font-bold uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white cursor-pointer text-black text-left flex justify-between items-center text-sm"
+                >
+                  <span className="truncate">{transCat}</span>
+                  <span className="font-black text-base">▼</span>
+                </button>
+
+                {/* LISTA DESPLEGABLE ESTILO COMIC */}
+                {isTransCatOpen && (
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-white border-4 border-black rounded-xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] max-h-48 overflow-y-auto z-50">
+                    <div
+                      onClick={() => {
+                        setTransCat('VARIOS');
+                        setIsTransCatOpen(false);
+                      }}
+                      className="p-3 font-black uppercase text-xs hover:bg-amber-200 cursor-pointer border-b-2 border-black flex items-center gap-2 text-black"
+                    >
+                      <span>📌</span> VARIOS
+                    </div>
+                    {categories
+                      .filter(c => (c.tipo || 'expense').toLowerCase() === (type || 'expense').toLowerCase())
+                      .map((c) => (
+                        <div
+                          key={c.id || c.nombre}
+                          onClick={() => {
+                            setTransCat(c.nombre);
+                            setIsTransCatOpen(false);
+                          }}
+                          className="p-3 font-black uppercase text-xs hover:bg-amber-200 cursor-pointer border-b-2 border-black flex items-center gap-2 text-black"
+                        >
+                          <span>{c.icono || '📌'}</span> {c.nombre}
+                        </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* MONTO */}
               <div className="flex flex-col">
                 <label className="text-sm font-black uppercase mb-1 text-black">Monto ($):</label>
                 <input
@@ -334,15 +450,15 @@ export default function QuickActionGrid(props) {
                   onChange={(e) => setTransAmount(e.target.value)}
                   placeholder="0.00"
                   autoFocus
-                  className="border-4 border-black p-2 rounded-xl text-2xl font-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white focus:outline-none focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all"
+                  className="border-4 border-black p-2 rounded-xl text-2xl font-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white focus:outline-none focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all text-black"
                 />
               </div>
 
-              <div className="flex gap-4 mt-4">
+              <div className="flex gap-4 mt-2">
                 <button
                   type="button"
                   onClick={() => setTransOpen(false)}
-                  className="flex-1 bg-white border-4 border-black py-2 rounded-xl font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 cursor-pointer"
+                  className="flex-1 bg-white border-4 border-black py-2 rounded-xl font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 cursor-pointer text-black"
                 >
                   CANCELAR
                 </button>
@@ -355,6 +471,18 @@ export default function QuickActionGrid(props) {
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* MODAL GESTOR DE CATEGORÍAS */}
+      {showCategoryManager && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <CategoryManager
+            onClose={() => setShowCategoryManager(false)}
+            onCategoryUpdated={() => {
+              fetchCategories();
+            }}
+          />
         </div>
       )}
 

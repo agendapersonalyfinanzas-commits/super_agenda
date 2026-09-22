@@ -9,14 +9,12 @@ export default function MetasAhorroSeccion({ activeUser }) {
   const [nuevoTitulo, setNuevoTitulo] = useState('');
   const [nuevoMonto, setNuevoMonto] = useState('');
   const [nuevaFecha, setNuevaFecha] = useState('');
-  const [nuevoIcon, setNuevoIcon] = useState('🎯');
+  const nuevoIcon = '🎯'; // Icono predeterminado fijo al quitar el selector
   
   const [mensajeExito, setMensajeExito] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   
   const [filtroEstado, setFiltroEstado] = useState('todas');
-
-  const iconosDisponibles = ['🎯', '🚗', '🏠', '✈️', '💻', '🎓', '🛠️', '💰', '🏆', '🐶'];
 
   useEffect(() => {
     if (activeUser) {
@@ -80,7 +78,6 @@ export default function MetasAhorroSeccion({ activeUser }) {
       setNuevoTitulo('');
       setNuevoMonto('');
       setNuevaFecha('');
-      setNuevoIcon('🎯');
       fetchMetas();
 
       setTimeout(() => {
@@ -218,22 +215,6 @@ export default function MetasAhorroSeccion({ activeUser }) {
               onChange={(e) => setNuevaFecha(e.target.value)}
               className="border-2 border-black rounded-xl px-2 py-1 text-xs font-bold bg-gray-50 focus:outline-none"
             />
-          </div>
-
-          <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
-            <span className="text-[11px] font-black uppercase mr-1">Icono:</span>
-            {iconosDisponibles.map((icon) => (
-              <button
-                key={icon}
-                type="button"
-                onClick={() => setNuevoIcon(icon)}
-                className={`w-7 h-7 flex items-center justify-center rounded-lg border-2 border-black text-sm cursor-pointer transition-all ${
-                  nuevoIcon === icon ? 'bg-yellow-300 scale-110 shadow-[2px_2px_0px_rgba(0,0,0,1)]' : 'bg-gray-50 hover:bg-gray-100'
-                }`}
-              >
-                {icon}
-              </button>
-            ))}
           </div>
 
           <button 
