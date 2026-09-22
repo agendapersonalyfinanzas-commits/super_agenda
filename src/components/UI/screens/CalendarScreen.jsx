@@ -1,4 +1,4 @@
-// src/screens/CalendarScreen.jsx (o la ruta donde lo tengas)
+// src/screens/CalendarScreen.jsx
 import React, { useState, useEffect } from 'react';
 import CalendarGrid from '../../../services/CalendarGrid';
 import SIdenoteCanvas from '../../Expenses/SIdenoteCanvas';
@@ -12,7 +12,7 @@ import { formatearFechaCorta } from '../../../utils/fechas.js';
 import { aMayusculas } from '../../../utils/mayusculas.js';
 import { obtenerMensajeError } from '../../../utils/errores.js';
 
-// --- NUEVAS IMPORTACIONES OFFLINE ---
+// --- SOPORTE OFFLINE ---
 import { agregarAColaOffline, procesarColaOffline } from '../../../utils/offlineSync.js';
 
 const NOTES_STORAGE_KEY = 'family_spen_notes';
@@ -46,14 +46,13 @@ export default function CalendarScreen() {
   useEffect(() => {
     const handleOnline = () => {
       setIsOffline(false);
-      procesarColaOffline().then(() => fetchActivities()); // Sincroniza y recarga
+      procesarColaOffline().then(() => fetchActivities());
     };
     const handleOffline = () => setIsOffline(true);
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Cargar credenciales completas para el RLS (Online)
     const loadUser = async () => {
       if (navigator.onLine) {
         const { data: { session } } = await supabase.auth.getSession();
@@ -70,7 +69,7 @@ export default function CalendarScreen() {
             household_id: profile?.household_id || null
           };
           setSessionUser(userData);
-          guardarEnStorage(USER_CACHE_KEY, userData); // Caché para cuando no haya internet
+          guardarEnStorage(USER_CACHE_KEY, userData);
         }
       }
     };
@@ -95,7 +94,7 @@ export default function CalendarScreen() {
     }
   }, [selectedDate]);
 
-  // --- LÓGICA DE AGRUPACIÓN (Reutilizable para online/offline) ---
+  // --- AGRUPACIÓN DE EVENTOS POR FECHA ---
   const agruparEventos = (data) => {
     const grouped = {};
     data.forEach(task => {
@@ -107,6 +106,7 @@ export default function CalendarScreen() {
         const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
         dbDate = `${currentYear}-${currentMonth}-${day}`;
       }
+      if (!dbDate) return;
       const [year, month, day] = dbDate.split('-');
       const dateStr = `${day}/${month}/${year}`;
       
@@ -114,23 +114,24 @@ export default function CalendarScreen() {
       grouped[dateStr].push({
         ...task,
         text: task.title,
-        time: task.event_time ? task.event_time.substring(0, 5) : '00:00',
-        event_date_db: dbDate
+        time: task.event_time ? task.event_time.substring(0, 5) : '09:00',
+        event_date_db: dbDate,
+        displayDate: dateStr
       });
     });
 
+    // Ordenar cronológicamente las tareas de cada día por hora
     Object.keys(grouped).forEach(date => {
       grouped[date].sort((a, b) => a.time.localeCompare(b.time));
     });
     return grouped;
   };
 
-  // 2. FETCH ACTIVIDADES (Caché si es offline)
+  // 2. FETCH ACTIVIDADES
   const fetchActivities = async () => {
     if (!sessionUser?.id) return;
 
     if (isOffline) {
-      // MODO OFFLINE: Carga la última versión guardada en el teléfono
       const cachedData = obtenerDeStorage(EVENTS_CACHE_KEY, []);
       setDayTasks(agruparEventos(cachedData));
       return;
@@ -144,7 +145,7 @@ export default function CalendarScreen() {
 
       if (error) throw error;
       
-      guardarEnStorage(EVENTS_CACHE_KEY, data); // Guardamos caché para el futuro
+      guardarEnStorage(EVENTS_CACHE_KEY, data);
       setDayTasks(agruparEventos(data));
     } catch (error) {
       console.error("Error al cargar eventos:", error);
@@ -155,16 +156,10 @@ export default function CalendarScreen() {
     fetchActivities();
   }, [sessionUser, isOffline]);
 
-  // 3. AGREGAR TAREA (Soporte Offline + RLS)
+  // 3. AGREGAR TAREA (TECLADO)
   const handleAddTask = async () => {
-    const hoyStr = new Date().toISOString().split('T')[0];
-
     if (!newTaskText.trim() || !newTaskDate) {
       alert("Por favor ingresa un título y selecciona una fecha.");
-      return;
-    }
-    if (!esPagoProgramado && newTaskDate < hoyStr) {
-      alert("Las actividades normales de la agenda no se pueden programar en fechas pasadas.");
       return;
     }
     if (!sessionUser) {
@@ -172,14 +167,13 @@ export default function CalendarScreen() {
       return;
     }
 
-    // Preparar el objeto con los datos obligatorios para el RLS
     const eventToInsert = {
-      id: crypto.randomUUID(), // ID temporal para offline
+      id: crypto.randomUUID(),
       title: newTaskText.trim(),
       event_date: newTaskDate,
-      event_time: newTaskTime ? (newTaskTime.length === 5 ? `${newTaskTime}:00` : newTaskTime) : '00:00:00',
-      user_id: sessionUser.id,           // REQUERIDO POR RLS
-      household_id: sessionUser.household_id, // REQUERIDO POR RLS
+      event_time: newTaskTime ? (newTaskTime.length === 5 ? `${newTaskTime}:00` : newTaskTime) : '09:00:00',
+      user_id: sessionUser.id,
+      household_id: sessionUser.household_id,
       is_completed: false,
       is_expense: esPagoProgramado && tipoMovimiento === 'expense',
       icon_url: null,
@@ -192,38 +186,33 @@ export default function CalendarScreen() {
 
     try {
       if (isOffline) {
-        // MODO OFFLINE: Guardar en cola
         await agregarAColaOffline('INSERT', 'agenda_events', eventToInsert);
-        
-        // Actualizar UI y caché local inmediatamente
         const cachedData = obtenerDeStorage(EVENTS_CACHE_KEY, []);
         cachedData.push(eventToInsert);
         guardarEnStorage(EVENTS_CACHE_KEY, cachedData);
         setDayTasks(agruparEventos(cachedData));
-        triggerSuccess('Actividad guardada en el teléfono (Sin conexión)');
+        triggerSuccess('Actividad guardada localmente');
       } else {
-        // MODO ONLINE
-        const { id, ...dataToInsert } = eventToInsert; // Supabase autogenera el ID real
+        const { id, ...dataToInsert } = eventToInsert;
         const { error } = await supabase.from('agenda_events').insert([dataToInsert]);
         if (error) throw error;
-        triggerSuccess('¡Evento financiero guardado!');
+        triggerSuccess('¡Actividad programada con éxito!');
         fetchActivities(); 
       }
 
-      // Limpiar formulario
       setNewTaskText('');
       setEsPagoProgramado(false);
       setMontoPago('');
       setCategoriaPago('GENERAL');
       setFrecuenciaPago('single');
-
+      setSelectedDate(null);
     } catch (error) {
       console.error("Error al guardar:", error);
       alert(`Error al guardar: ${error.message || JSON.stringify(error)}`);
     }
   };
 
-  // 4. ELIMINAR TAREA (Soporte Offline)
+  // 4. ELIMINAR TAREA
   const handleDeleteTask = async (taskId) => {
     const confirmDelete = window.confirm("¿Seguro que deseas borrar esta actividad?");
     if (!confirmDelete) return;
@@ -231,16 +220,14 @@ export default function CalendarScreen() {
     try {
       if (isOffline) {
         await agregarAColaOffline('DELETE', 'agenda_events', { id: taskId });
-        
-        // Actualizar UI
         const cachedData = obtenerDeStorage(EVENTS_CACHE_KEY, []).filter(t => t.id !== taskId);
         guardarEnStorage(EVENTS_CACHE_KEY, cachedData);
         setDayTasks(agruparEventos(cachedData));
-        triggerSuccess('Actividad eliminada localmente (Sin conexión)');
+        triggerSuccess('Actividad eliminada');
       } else {
         const { error } = await supabase.from('agenda_events').delete().eq('id', taskId);
         if (error) throw error;
-        triggerSuccess('Actividad eliminada de la nube');
+        triggerSuccess('Actividad eliminada');
         fetchActivities();
       }
     } catch (error) {
@@ -248,43 +235,35 @@ export default function CalendarScreen() {
     }
   };
 
-  // 5. COMPLETAR Y REGISTRAR TRANSACCIÓN (¡Inyección crítica de auth_user_email!)
+  // 5. COMPLETAR Y REGISTRAR TRANSACCIÓN
   const handleToggleComplete = async (task) => {
     const nuevoEstado = !task.is_completed;
     const taskUpdateData = { id: task.id, is_completed: nuevoEstado };
 
     try {
       let transactionData = null;
-
-      // Si es un pago y se está marcando como completado, preparamos la transacción
       if (task.is_pago && nuevoEstado && task.monto > 0) {
         transactionData = {
           concept: `Movimiento: ${task.text}`,
           amount: task.monto,
           transaction_type: task.transaction_type || 'expense',
           category: task.category || 'GENERAL',
-          auth_user_email: sessionUser.email // 🔥 REQUERIDO POR RLS DE TRANSACTIONS
+          auth_user_email: sessionUser.email
         };
       }
 
       if (isOffline) {
-        // Enviar a cola de tareas
         await agregarAColaOffline('UPDATE', 'agenda_events', taskUpdateData);
         if (transactionData) {
           await agregarAColaOffline('INSERT', 'transactions', transactionData);
         }
-
-        // Actualizar UI local optimista
         const cachedData = obtenerDeStorage(EVENTS_CACHE_KEY, []);
         const index = cachedData.findIndex(t => t.id === task.id);
         if (index !== -1) cachedData[index].is_completed = nuevoEstado;
         guardarEnStorage(EVENTS_CACHE_KEY, cachedData);
         setDayTasks(agruparEventos(cachedData));
-
-        triggerSuccess(nuevoEstado ? 'Pago registrado offline' : 'Actividad reabierta offline');
-
+        triggerSuccess(nuevoEstado ? '¡Realizado!' : 'Actividad reabierta');
       } else {
-        // MODO ONLINE
         const { error } = await supabase.from('agenda_events').update({ is_completed: nuevoEstado }).eq('id', task.id);
         if (error) throw error;
 
@@ -292,48 +271,118 @@ export default function CalendarScreen() {
           const { error: errorTrans } = await supabase.from('transactions').insert([transactionData]);
           if (!errorTrans) window.dispatchEvent(new CustomEvent('transaction-updated'));
         }
-        triggerSuccess(nuevoEstado ? '💳 ¡Pago realizado y registrado en finanzas!' : 'Actividad reabierta');
+        triggerSuccess(nuevoEstado ? '✓ ¡Actividad marcada como realizada!' : 'Actividad reabierta');
         fetchActivities();
       }
     } catch (error) {
       console.error("Error al actualizar:", error.message);
-      alert("Hubo un error al procesar el movimiento.");
+      alert("Hubo un error al procesar el cambio.");
     }
   };
 
   const getSemaforoVisual = (task) => {
     if (task.is_completed) {
-      return { badge: '🟢 Pagado', clase: 'bg-green-100 border-green-600 text-green-900' };
+      return { badge: '🟢 Realizado', clase: 'bg-green-100 border-green-600 text-green-900' };
     }
     if (!task.is_pago) {
-      return { badge: '', clase: 'bg-white text-black' };
+      return { badge: '📌 Pendiente', clase: 'bg-sky-100 border-black text-black' };
     }
     const hoy = new Date().toISOString().split('T')[0];
     const fechaEvento = task.event_date_db;
     if (fechaEvento === hoy) return { badge: '🔴 ¡Vence Hoy!', clase: 'bg-red-200 border-red-600 text-red-950 animate-pulse' };
     else if (fechaEvento < hoy) return { badge: '🔴 Vencido', clase: 'bg-red-300 border-red-700 text-red-950' };
-    else return { badge: '🟡 Pendiente', clase: 'bg-yellow-100 border-yellow-600 text-yellow-900' };
+    else return { badge: '🟡 Próximo', clase: 'bg-yellow-100 border-yellow-600 text-yellow-900' };
   };
 
   useEffect(() => {
     guardarEnStorage(NOTES_STORAGE_KEY, savedNotes);
   }, [savedNotes]);
 
-  const handleSaveNote = (base64Data) => {
-    const newNote = { id: Date.now(), image: base64Data, date: selectedDate || formatearFechaCorta(new Date()) };
-    setSavedNotes(prev => [newNote, ...prev]);
+  const handleSaveNote = async (base64Data) => {
+    const dateStr = selectedDate || formatearFechaCorta(new Date());
+    const newNote = { id: Date.now(), image: base64Data, date: dateStr };
+    setSavedNotes(prev => [newNote, ...savedNotes]);
+
+    if (sessionUser?.id) {
+      let dbDate = new Date().toISOString().split('T')[0];
+      if (selectedDate) {
+        const [d, m, y] = selectedDate.split('/');
+        dbDate = `${y}-${m}-${d}`;
+      }
+
+      const canvasEvent = {
+        title: '✏️ NOTA / DIBUJO S-PEN',
+        event_date: dbDate,
+        event_time: '12:00:00',
+        user_id: sessionUser.id,
+        household_id: sessionUser.household_id,
+        is_completed: false,
+        is_expense: false,
+        is_pago: false,
+        monto: 0,
+        transaction_type: 'expense',
+        category: 'AGENDA',
+        recurrence: 'single'
+      };
+
+      try {
+        if (isOffline) {
+          await agregarAColaOffline('INSERT', 'agenda_events', canvasEvent);
+        } else {
+          await supabase.from('agenda_events').insert([canvasEvent]);
+          fetchActivities();
+        }
+      } catch (err) {
+        console.error("Error sincronizando nota S-Pen:", err);
+      }
+    }
+
     setIsCanvasOpen(false);
-    triggerSuccess('Nota guardada con éxito');
+    triggerSuccess('¡Nota guardada en el calendario!');
   };
 
-  const handleSaveVoiceNote = (textoDictado) => {
+  const handleSaveVoiceNote = async (textoDictado) => {
+    if (!textoDictado) return;
+    
+    let dbDate = new Date().toISOString().split('T')[0];
     if (selectedDate) {
-      setNewTaskText(textoDictado);
-    } else {
-      const newNote = { id: Date.now(), text: textoDictado, date: formatearFechaCorta(new Date()) };
-      setSavedNotes(prev => [newNote, ...prev]);
-      triggerSuccess('Nota de voz guardada');
+      const [d, m, y] = selectedDate.split('/');
+      dbDate = `${y}-${m}-${d}`;
     }
+
+    const voiceEvent = {
+      id: crypto.randomUUID(),
+      title: `🎙️ ${textoDictado.toUpperCase()}`,
+      event_date: dbDate,
+      event_time: '09:00:00',
+      user_id: sessionUser?.id,
+      household_id: sessionUser?.household_id,
+      is_completed: false,
+      is_expense: false,
+      is_pago: false,
+      monto: 0,
+      transaction_type: 'expense',
+      category: 'VOZ',
+      recurrence: 'single'
+    };
+
+    try {
+      if (isOffline) {
+        await agregarAColaOffline('INSERT', 'agenda_events', voiceEvent);
+        const cachedData = obtenerDeStorage(EVENTS_CACHE_KEY, []);
+        cachedData.push(voiceEvent);
+        guardarEnStorage(EVENTS_CACHE_KEY, cachedData);
+        setDayTasks(agruparEventos(cachedData));
+      } else {
+        const { id, ...dataToInsert } = voiceEvent;
+        await supabase.from('agenda_events').insert([dataToInsert]);
+        fetchActivities();
+      }
+      triggerSuccess('🎙️ Nota de voz registrada');
+    } catch (err) {
+      console.error("Error guardando nota de voz:", err);
+    }
+
     setIsVoiceOpen(false);
   };
 
@@ -363,7 +412,6 @@ export default function CalendarScreen() {
         </div>
       )}
 
-      {/* A partir de aquí, el renderizado de tu UI se mantiene exactamente igual... */}
       <div className={`max-w-4xl mx-auto space-y-6 flex flex-col items-center ${isOffline ? 'mt-8' : ''}`}>
         
         <header className="w-full flex flex-wrap justify-between items-center border-4 border-black bg-amber-400 p-6 rounded-3xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] gap-4">
@@ -398,39 +446,163 @@ export default function CalendarScreen() {
           dayTasks={dayTasks} 
         />
 
-        <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-6 pt-4">
-          {savedNotes.map(note => (
-            <div 
-              key={note.id} 
-              className="border-4 border-black bg-white p-4 rounded-3xl shadow-[5px_5px_0px_0px_rgba(0,0,0,1)] flex flex-col justify-between relative"
-            >
-              {note.image ? (
-                <div className="w-full bg-stone-50 border-2 border-black rounded-2xl overflow-hidden p-1">
-                  <img src={note.image} alt="Nota" className="w-full h-auto object-contain bg-white rounded-xl" />
-                </div>
-              ) : (
-                <div className="w-full bg-amber-50 border-2 border-black rounded-2xl p-4 min-h-30 flex items-center justify-center text-center">
-                  <p className="text-xs font-bold uppercase tracking-wide text-black wrap-break-word leading-relaxed">
-                    "{note.text}"
-                  </p>
-                </div>
-              )}
+        {/* 🌟 SECCIÓN A PIE DE CALENDARIO: TARJETAS AGRUPADAS POR DÍA CON TODOS SUS EVENTOS */}
+        <div className="w-full space-y-4 pt-4">
+          <div className="border-b-4 border-black pb-2 flex justify-between items-center">
+            <h3 className="font-black text-lg uppercase text-black">📋 AGENDA DIARIA Y EVENTOS</h3>
+            <span className="bg-amber-300 border-2 border-black px-2.5 py-0.5 rounded-xl text-xs font-black">
+              Días con actividad: {Object.keys(dayTasks).length}
+            </span>
+          </div>
 
-              <div className="flex justify-between items-center pt-3 mt-2 border-t-2 border-dashed border-stone-200">
-                <span className="text-[10px] font-black uppercase text-stone-600 bg-stone-100 border border-black px-2 py-0.5 rounded-md">
-                  {note.date}
-                </span>
-                <button 
-                  type="button"
-                  onClick={() => handleDeleteNote(note.id)} 
-                  className="text-xs font-black text-rose-600 uppercase hover:underline cursor-pointer"
-                >
-                  {aMayusculas('Eliminar')}
-                </button>
-              </div>
+          {Object.keys(dayTasks).length === 0 ? (
+            <div className="bg-white border-4 border-black rounded-3xl p-6 text-center shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
+              <p className="font-bold text-xs uppercase text-stone-600">No hay actividades ni pagos programados en el calendario.</p>
             </div>
-          ))}
+          ) : (
+            <div className="grid grid-cols-1 gap-6">
+              {Object.entries(dayTasks).map(([dateStr, tasks]) => {
+                const totalPendientes = tasks.filter(t => !t.is_completed).length;
+
+                return (
+                  <div 
+                    key={dateStr}
+                    className="bg-white border-4 border-black rounded-3xl p-5 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] flex flex-col gap-4"
+                  >
+                    {/* Encabezado de la tarjeta por Día */}
+                    <div className="flex justify-between items-center border-b-3 border-black pb-2.5 bg-amber-100 -mx-5 -mt-5 p-4 rounded-t-3xl border-t-0 border-x-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xl">📅</span>
+                        <h4 className="font-black text-base uppercase text-black">
+                          Día: {dateStr}
+                        </h4>
+                      </div>
+                      <span className={`border-2 border-black px-2.5 py-0.5 rounded-xl text-[10px] font-black uppercase ${totalPendientes === 0 ? 'bg-emerald-300 text-black' : 'bg-amber-300 text-black'}`}>
+                        {totalPendientes === 0 ? '✨ ¡Día Completado!' : `${totalPendientes} pendientes`}
+                      </span>
+                    </div>
+
+                    {/* Lista de eventos para este día */}
+                    <div className="space-y-3">
+                      {tasks.map(task => {
+                        const isCompleted = task.is_completed;
+                        const isPago = task.is_pago;
+                        const semaforo = getSemaforoVisual(task);
+
+                        return (
+                          <div 
+                            key={task.id}
+                            className={`border-3 border-black p-3.5 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 transition-all ${
+                              isCompleted ? 'bg-stone-100 opacity-80' : 'bg-amber-50/50 hover:bg-amber-50'
+                            }`}
+                          >
+                            <div className="flex items-start sm:items-center gap-3">
+                              {/* Checkbox / Botón de palomear rápido */}
+                              <button
+                                type="button"
+                                onClick={() => handleToggleComplete(task)}
+                                className={`w-7 h-7 rounded-xl border-3 border-black flex items-center justify-center font-black text-sm cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 shrink-0 ${
+                                  isCompleted ? 'bg-emerald-400 text-black' : 'bg-white text-transparent'
+                                }`}
+                                title={isCompleted ? "Marcar como pendiente" : "Palomear como realizado"}
+                              >
+                                ✓
+                              </button>
+
+                              <div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  {/* ICONO DISTINTIVO: FINANZAS VS ACTIVIDAD */}
+                                  <span className="bg-amber-300 border border-black px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase flex items-center gap-1 shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
+                                    {task.is_pago ? '💳 FINANZAS' : '📌 ACTIVIDAD'} ⏰ {task.time}
+                                  </span>
+                                  <span className="text-[10px] font-black uppercase text-stone-700 bg-white border border-black px-2 py-0.5 rounded-md shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
+                                    [{task.category || 'GENERAL'}]
+                                  </span>
+                                </div>
+                                <h5 className={`font-black text-sm uppercase mt-1 ${isCompleted ? 'line-through text-stone-400' : 'text-black'}`}>
+                                  {task.text} {task.recurrence === 'monthly' ? '🔁' : ''}
+                                </h5>
+                                {isPago && task.monto > 0 && (
+                                  <p className="text-[11px] font-black text-emerald-700 mt-0.5">
+                                    Monto: ${task.monto} ({task.transaction_type === 'expense' ? 'Pago' : 'Cobro'})
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
+                              <span className={`border-2 border-black px-2 py-0.5 rounded-lg text-[9px] font-black uppercase ${semaforo.clase}`}>
+                                {semaforo.badge}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleComplete(task)}
+                                className={`px-2.5 py-1 border-2 border-black font-black text-[10px] uppercase rounded-xl shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer ${
+                                  isCompleted ? 'bg-stone-200 text-black' : isPago ? 'bg-green-300 text-black' : 'bg-amber-400 text-black'
+                                }`}
+                              >
+                                {isCompleted ? '↩️ Reabrir' : isPago ? '💳 Pagar' : '✓ Realizado'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteTask(task.id)}
+                                className="px-2.5 py-1 bg-rose-200 border-2 border-black font-black text-[10px] uppercase rounded-xl shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer text-rose-900"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
+
+        {/* NOTAS Y DIBUJOS S-PEN GUARDADOS */}
+        {savedNotes.filter(n => n.image || n.text).length > 0 && (
+          <div className="w-full space-y-4 pt-4">
+            <div className="border-b-4 border-black pb-2">
+              <h3 className="font-black text-lg uppercase text-black">✍️ NOTAS Y DIBUJOS S-PEN</h3>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              {savedNotes.filter(note => note.image || note.text).map(note => (
+                <div 
+                  key={note.id} 
+                  className="border-4 border-black bg-white p-4 rounded-3xl shadow-[5px_5px_0px_0px_rgba(0,0,0,1)] flex flex-col justify-between relative"
+                >
+                  {note.image ? (
+                    <div className="w-full bg-stone-50 border-2 border-black rounded-2xl overflow-hidden p-1">
+                      <img src={note.image} alt="Nota S-Pen" className="w-full h-auto object-contain bg-white rounded-xl" />
+                    </div>
+                  ) : (
+                    <div className="w-full bg-amber-50 border-2 border-black rounded-2xl p-4 min-h-30 flex items-center justify-center text-center">
+                      <p className="text-xs font-bold uppercase tracking-wide text-black leading-relaxed">
+                        "{note.text}"
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between items-center pt-3 mt-2 border-t-2 border-dashed border-stone-200">
+                    <span className="text-[10px] font-black uppercase text-stone-600 bg-stone-100 border border-black px-2 py-0.5 rounded-md">
+                      {note.date}
+                    </span>
+                    <button 
+                      type="button"
+                      onClick={() => handleDeleteNote(note.id)} 
+                      className="text-xs font-black text-rose-600 uppercase hover:underline cursor-pointer"
+                    >
+                      {aMayusculas('Eliminar')}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* MODAL TAREAS DEL DÍA */}
@@ -462,12 +634,12 @@ export default function CalendarScreen() {
               ✏️ {aMayusculas('Abrir Lienzo S-Pen')}
             </button>
 
-            {/* FORMULARIO DE NUEVA ACTIVIDAD / PAGO PROGRAMADO */}
+            {/* FORMULARIO DE NUEVA ACTIVIDAD CON SELECTOR DE HORA RETRO-COMIC */}
             <div className="space-y-3 bg-amber-300 p-3.5 border-3 border-black rounded-2xl shadow-[3px_3px_0px_rgba(0,0,0,1)]">
               
               <div className="bg-white border-3 border-black rounded-2xl p-3 space-y-2">
                 <div className="flex justify-between items-center font-black text-xs uppercase">
-                  <span>📅 Selecciona la Fecha:</span>
+                  <span>📅 Fecha Seleccionada:</span>
                   <span className="bg-amber-200 border border-black px-2 py-0.5 rounded text-[10px]">
                     {newTaskDate || 'Ninguna'}
                   </span>
@@ -526,20 +698,52 @@ export default function CalendarScreen() {
                 </div>
               </div>
 
-              <div className="flex gap-2">
-                <input
-                  type="time"
-                  value={newTaskTime}
-                  onChange={(e) => setNewTaskTime(e.target.value)}
-                  className="p-2.5 bg-white border-3 border-black rounded-xl text-xs font-bold uppercase focus:outline-none"
-                />
-                <input
-                  type="text"
-                  placeholder="Ej. Pagar Renta, Internet..."
-                  value={newTaskText}
-                  onChange={(e) => setNewTaskText(e.target.value)}
-                  className="flex-1 p-2.5 bg-white border-3 border-black rounded-xl text-xs font-bold uppercase focus:outline-none"
-                />
+              {/* HORA Y TÍTULO DE LA ACTIVIDAD - SELECTOR ESTILO RETRO-COMIC */}
+              <div className="flex gap-2 items-end">
+                <div className="flex flex-col">
+                  <label className="text-[10px] font-black uppercase text-black mb-1">Hora:</label>
+                  <div className="flex gap-1 items-center">
+                    <select
+                      value={newTaskTime.split(':')[0] || '09'}
+                      onChange={(e) => {
+                        const h = e.target.value;
+                        const m = newTaskTime.split(':')[1] || '00';
+                        setNewTaskTime(`${h}:${m}`);
+                      }}
+                      className="p-2.5 bg-white border-3 border-black rounded-xl text-xs font-black uppercase focus:outline-none shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+                    >
+                      {Array.from({ length: 24 }).map((_, i) => {
+                        const hStr = String(i).padStart(2, '0');
+                        return <option key={hStr} value={hStr}>{hStr}</option>;
+                      })}
+                    </select>
+                    <span className="font-black text-black text-sm">:</span>
+                    <select
+                      value={newTaskTime.split(':')[1] || '00'}
+                      onChange={(e) => {
+                        const m = e.target.value;
+                        const h = newTaskTime.split(':')[0] || '09';
+                        setNewTaskTime(`${h}:${m}`);
+                      }}
+                      className="p-2.5 bg-white border-3 border-black rounded-xl text-xs font-black uppercase focus:outline-none shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+                    >
+                      {['00', '10', '15', '20', '30', '40', '45', '50'].map((mStr) => (
+                        <option key={mStr} value={mStr}>{mStr}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex flex-col flex-1">
+                  <label className="text-[10px] font-black uppercase text-black mb-1">Concepto / Actividad:</label>
+                  <input
+                    type="text"
+                    placeholder="Ej. Cita en la SEV. Pago de Renta.."
+                    value={newTaskText}
+                    onChange={(e) => setNewTaskText(e.target.value)}
+                    className="p-2.5 bg-white border-3 border-black rounded-xl text-xs font-bold uppercase focus:outline-none"
+                  />
+                </div>
               </div>
 
               <div className="border-2 border-black rounded-xl p-2.5 bg-white flex flex-col gap-2">
@@ -566,7 +770,7 @@ export default function CalendarScreen() {
                       <select 
                         value={tipoMovimiento}
                         onChange={(e) => setTipoMovimiento(e.target.value)}
-                        className="border-2 border-black rounded-xl px-2 py-1.5 text-xs font-bold bg-amber-50 focus:outline-none uppercase"
+                        className="border-2 border-black rounded-xl px-2.5 py-1.5 text-xs font-bold bg-amber-50 focus:outline-none uppercase"
                       >
                         <option value="expense">Gasto (Pago)</option>
                         <option value="income">Ingreso (Cobro)</option>
@@ -585,7 +789,7 @@ export default function CalendarScreen() {
                       <select 
                         value={frecuenciaPago}
                         onChange={(e) => setFrecuenciaPago(e.target.value)}
-                        className="w-40 border-2 border-black rounded-xl px-2 py-1.5 text-xs font-bold bg-amber-50 focus:outline-none uppercase"
+                        className="w-40 border-2 border-black rounded-xl px-2.5 py-1.5 text-xs font-bold bg-amber-50 focus:outline-none uppercase"
                       >
                         <option value="single">🎯 Eventual</option>
                         <option value="monthly">🔁 Recurrente</option>
@@ -595,7 +799,7 @@ export default function CalendarScreen() {
                 )}
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex gap-2 pt-1">
                 <button
                   type="button"
                   onClick={() => setIsVoiceOpen(true)}
@@ -654,7 +858,7 @@ export default function CalendarScreen() {
                       <button 
                         type="button"
                         onClick={() => handleToggleComplete(task)}
-                        className={`px-2.5 py-1 border-2 border-black rounded-xl font-black text-[10px] uppercase shadow-[2px_2px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer transition-all ${
+                        className={`px-2.5 py-1 border-2 border-black rounded-xl font-black text-[10px] uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer transition-all ${
                           task.is_completed ? 'bg-amber-300 hover:bg-amber-400' : 'bg-green-300 hover:bg-green-400'
                         }`}
                         title={task.is_completed ? "Desmarcar pago" : "Pagar y registrar en finanzas"}
