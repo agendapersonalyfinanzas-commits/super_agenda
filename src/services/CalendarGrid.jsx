@@ -52,11 +52,11 @@ export default function CalendarGrid({ onSelectDay, dayTasks = {} }) {
   };
 
   return (
-    <div className="w-full bg-white border-4 border-black p-4 sm:p-6 rounded-3xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] font-mono select-none">
+    <div className="w-full bg-white border-4 border-black p-2 sm:p-6 rounded-3xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] font-mono select-none">
       
       {/* CONTROLES DE MES */}
-      <div className="flex flex-col items-center gap-3 mb-6 border-b-4 border-black pb-4">
-        <h2 className="text-xl font-black uppercase tracking-tight text-center">
+      <div className="flex flex-col items-center gap-2 sm:gap-3 mb-4 sm:mb-6 border-b-4 border-black pb-3 sm:pb-4">
+        <h2 className="text-lg sm:text-xl font-black uppercase tracking-tight text-center">
           {aMayusculas(`${meses[month]} ${year}`)}
         </h2>
         <div className="flex justify-between w-full gap-2">
@@ -64,7 +64,7 @@ export default function CalendarGrid({ onSelectDay, dayTasks = {} }) {
             type="button"
             onClick={handlePrevMonth}
             aria-label="Mes anterior"
-            className="flex-1 px-3 py-2 bg-amber-400 border-4 border-black rounded-xl font-black text-xs uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none cursor-pointer truncate"
+            className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 bg-amber-400 border-3 sm:border-4 border-black rounded-xl font-black text-[11px] sm:text-xs uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none cursor-pointer truncate"
           >
             ◀ {aMayusculas('Anterior')}
           </button>
@@ -72,7 +72,7 @@ export default function CalendarGrid({ onSelectDay, dayTasks = {} }) {
             type="button"
             onClick={handleNextMonth}
             aria-label="Mes siguiente"
-            className="flex-1 px-3 py-2 bg-amber-400 border-4 border-black rounded-xl font-black text-xs uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none cursor-pointer truncate"
+            className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 bg-amber-400 border-3 sm:border-4 border-black rounded-xl font-black text-[11px] sm:text-xs uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none cursor-pointer truncate"
           >
             {aMayusculas('Siguiente')} ▶
           </button>
@@ -80,18 +80,18 @@ export default function CalendarGrid({ onSelectDay, dayTasks = {} }) {
       </div>
 
       {/* Días de la semana */}
-      <div className="grid grid-cols-7 gap-1.5 mb-2 text-center">
+      <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-2 text-center">
         {diasSemana.map((d) => (
-          <div key={d} className="font-black text-[11px] sm:text-xs uppercase text-stone-600">
+          <div key={d} className="font-black text-[10px] sm:text-xs uppercase text-stone-600 truncate">
             {d}
           </div>
         ))}
       </div>
 
       {/* Cuadrícula de días */}
-      <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
+      <div className="grid grid-cols-7 gap-1 sm:gap-2">
         {Array.from({ length: firstDayIndex }).map((_, index) => (
-          <div key={`empty-${index}`} className="h-20 sm:h-24 bg-stone-100 border-2 border-dashed border-stone-300 rounded-xl opacity-40" />
+          <div key={`empty-${index}`} className="h-14 sm:h-22 bg-stone-100 border-2 border-dashed border-stone-300 rounded-xl opacity-40" />
         ))}
 
         {Array.from({ length: totalDays }).map((_, index) => {
@@ -117,15 +117,15 @@ export default function CalendarGrid({ onSelectDay, dayTasks = {} }) {
               type="button"
               onClick={() => onSelectDay && onSelectDay(formattedDate)}
               aria-label={`Día ${dayNum} de ${meses[month]} de ${year}`}
-              className={`h-20 sm:h-24 border-2 rounded-xl font-black text-xs flex flex-col justify-between p-1.5 relative transition-all cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none ${cellStyle} ${
-                isToday ? 'ring-4 ring-sky-500 scale-105 z-10' : ''
+              className={`h-14 sm:h-22 border-2 rounded-xl font-black text-xs flex flex-col justify-between p-1 sm:p-1.5 relative transition-all cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none overflow-hidden ${cellStyle} ${
+                isToday ? 'ring-3 sm:ring-4 ring-sky-500 z-10' : ''
               }`}
             >
               {/* Número del día e indicador de HOY en NEGRO */}
-              <div className="w-full flex justify-between items-center">
-                <span className="text-xs sm:text-sm font-black">{dayNum}</span>
+              <div className="w-full flex items-center justify-between gap-0.5 leading-none">
+                <span className="text-[11px] sm:text-sm font-black">{dayNum}</span>
                 {isToday && (
-                  <span className="text-[7px] sm:text-[8px] bg-black text-white font-black px-1 rounded-sm uppercase tracking-wider">
+                  <span className="text-[6px] sm:text-[8px] bg-black text-white font-black px-0.5 sm:px-1 py-0.5 rounded-xs uppercase tracking-tighter shrink-0">
                     HOY
                   </span>
                 )}
@@ -133,15 +133,16 @@ export default function CalendarGrid({ onSelectDay, dayTasks = {} }) {
 
               {/* Resumen financiero dentro de la celda */}
               {hasTasks ? (
-                <div className="w-full flex flex-col gap-0.5 overflow-hidden text-left">
+                <div className="w-full flex flex-col gap-0.5 overflow-hidden text-left leading-none">
                   {totalMonto > 0 && (
-                    <div className="bg-black text-amber-300 text-[9px] sm:text-[10px] px-1 py-0.5 rounded font-black truncate text-center shadow-sm">
-                      ${totalMonto.toLocaleString()}
+                    <div className="bg-black text-amber-300 text-[7px] sm:text-[9px] px-0.5 py-0.5 rounded font-black truncate text-center">
+                      ${totalMonto >= 1000 ? `${(totalMonto / 1000).toFixed(1)}k` : totalMonto}
                     </div>
                   )}
-                  <div className="text-[9px] sm:text-[10px] font-bold truncate text-black bg-white/90 px-1 py-0.5 rounded border border-black/30 flex items-center justify-between">
+                  <div className="text-[7px] sm:text-[9px] font-bold truncate text-black bg-white/90 px-0.5 py-0.5 rounded border border-black/30 flex items-center justify-between">
                     <span>{tasksForDay[0]?.is_completed ? '🟢' : tasksForDay[0]?.is_pago ? '💳' : '📌'}</span>
-                    <span className="truncate">{tasksForDay.length} {tasksForDay.length === 1 ? 'evento' : 'eventos'}</span>
+                    <span className="truncate hidden sm:inline">{tasksForDay.length} {tasksForDay.length === 1 ? 'evento' : 'eventos'}</span>
+                    <span className="sm:hidden text-[7px]">{tasksForDay.length}</span>
                   </div>
                 </div>
               ) : (
