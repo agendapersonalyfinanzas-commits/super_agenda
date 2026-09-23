@@ -1,5 +1,6 @@
+// src/components/Calendar/CalendarGrid.jsx
 import React, { useState } from 'react';
-import { aMayusculas } from '../utils/mayusculas.js';
+import { aMayusculas } from '../../utils/mayusculas.js';
 
 export default function CalendarGrid({ onSelectDay, dayTasks = {} }) {
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -96,7 +97,9 @@ export default function CalendarGrid({ onSelectDay, dayTasks = {} }) {
 
         {Array.from({ length: totalDays }).map((_, index) => {
           const dayNum = index + 1;
-          const formattedDate = `${dayNum.toString().padStart(2, '0')}/${(month + 1).toString().padStart(2, '0')}/${year}`;
+          
+          // Formato YYYY-MM-DD estándar para empatar con la base de datos y DayChecklist
+          const formattedDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
           
           const cellDate = new Date(year, month, dayNum);
           cellDate.setHours(0, 0, 0, 0);
@@ -121,7 +124,7 @@ export default function CalendarGrid({ onSelectDay, dayTasks = {} }) {
                 isToday ? 'ring-3 sm:ring-4 ring-sky-500 z-10' : ''
               }`}
             >
-              {/* Número del día e indicador de HOY en NEGRO */}
+              {/* Número del día e indicador de HOY */}
               <div className="w-full flex items-center justify-between gap-0.5 leading-none">
                 <span className="text-[11px] sm:text-sm font-black">{dayNum}</span>
                 {isToday && (
