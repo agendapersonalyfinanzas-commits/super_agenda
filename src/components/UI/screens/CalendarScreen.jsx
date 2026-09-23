@@ -67,7 +67,7 @@ export default function CalendarScreen() {
             .from('users')
             .select('household_id')
             .eq('id', session.user.id)
-            .single();
+            .maybeSingle(); // Uso profesional para prevenir errores 406 si el perfil aún no existe
           
           const userData = {
             id: session.user.id,
@@ -420,10 +420,11 @@ export default function CalendarScreen() {
 
       <div className={`max-w-4xl mx-auto space-y-6 flex flex-col items-center ${isOffline ? 'mt-8' : ''}`}>
         
-        {/* HEADER COMPONENT */}
+        {/* HEADER COMPONENT (Con supabase inyectado para las notificaciones push) */}
         <CalendarHeader 
           setIsCanvasOpen={setIsCanvasOpen} 
           setIsVoiceOpen={setIsVoiceOpen} 
+          supabase={supabase}
         />
 
         <CalendarGrid 
