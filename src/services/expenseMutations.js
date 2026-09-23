@@ -3,7 +3,16 @@ import { aNumero } from '../utils/moneda.js';
 import { aMayusculas } from '../utils/mayusculas.js';
 import { obtenerMensajeError } from '../utils/errores.js';
 
-export async function saveTransaction({ transactionType, amount, category, concept, userName }) {
+// 🟢 Helper para obtener la fecha local exacta del dispositivo (evita desfases por UTC)
+const getLocalDate = () => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+export async function saveTransaction({ transactionType, amount, category, concept, userName, date, transaction_date, is_retroactive }) {
   const { data: { session } } = await supabase.auth.getSession();
   const user = session?.user;
 
@@ -16,15 +25,19 @@ export async function saveTransaction({ transactionType, amount, category, conce
     throw new Error("POR FAVOR, REVISA LOS DATOS INGRESADOS: El monto debe ser mayor a 0.");
   }
 
+  // Captura prioritaria de la fecha (si no viene, usa la fecha local exacta)
+  const finalDate = date || transaction_date || getLocalDate();
+
   const payload = {
     transaction_type: transactionType,
     amount: numAmount,
     category: aMayusculas(category || 'GENERAL'),
     concept: aMayusculas(concept || (transactionType === 'expense' ? 'GASTO' : 'INGRESO')),
     user_name: aMayusculas(userName || 'LUIS RICARDO'),
-    auth_user_email: user.email,
+    auth_user_email: user.email, 
     user_id: user.id,
-    transaction_date: new Date().toISOString()
+    transaction_date: finalDate, 
+    is_retroactive: Boolean(is_retroactive)
   };
 
   const { data, error } = await supabase
@@ -41,9 +54,7 @@ export async function saveTransaction({ transactionType, amount, category, conce
   return data;
 }
 
-// 🔥 FUSIONADO: Ahora actualiza todo (monto, concepto, tipo) y mantiene la estructura segura
 export async function updateTransactionAmount(id, updatedData) {
-  // Soporte dual: detecta si recibe el objeto del nuevo modal o solo el número antiguo
   const isObject = typeof updatedData === 'object' && updatedData !== null;
   const numAmount = aNumero(isObject ? updatedData.amount : updatedData);
 
@@ -51,11 +62,12 @@ export async function updateTransactionAmount(id, updatedData) {
     throw new Error("El monto debe ser un número mayor a 0.");
   }
 
-  // Si es un objeto, actualiza todos los campos. Si no, solo el monto.
   const payloadToUpdate = isObject ? {
     amount: numAmount,
     concept: aMayusculas(updatedData.concept),
-    transaction_type: updatedData.transaction_type
+    transaction_type: updatedData.transaction_type,
+    ...(updatedData.is_retroactive !== undefined ? { is_retroactive: Boolean(updatedData.is_retroactive) } : {}),
+    ...(updatedData.date || updatedData.transaction_date ? { transaction_date: updatedData.date || updatedData.transaction_date } : {})
   } : {
     amount: numAmount
   };

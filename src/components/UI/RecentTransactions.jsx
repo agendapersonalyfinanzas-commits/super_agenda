@@ -2,8 +2,30 @@ import React, { useState } from 'react';
 import { formatearMoneda } from '../../utils/moneda.js';
 import PDFPreviewModal from './PDFPreviewModal.jsx';
 
+// 🟢 Helper para mostrar fecha y hora limpia sin milisegundos ni formatos extraños
+const formatearFechaLimpia = (tx) => {
+  const rawDate = tx.transaction_date || tx.created_at;
+  if (!rawDate) return '';
+
+  const fecha = new Date(rawDate);
+  if (!isNaN(fecha)) {
+    const dia = String(fecha.getDate()).padStart(2, '0');
+    const mes = String(fecha.getMonth() + 1).padStart(2, '0');
+    const anio = fecha.getFullYear();
+    const horas = String(fecha.getHours()).padStart(2, '0');
+    const minutos = String(fecha.getMinutes()).padStart(2, '0');
+
+    if (horas === '00' && minutos === '00' && !rawDate.includes('T')) {
+      return `${dia}/${mes}/${anio}`;
+    }
+    return `${dia}/${mes}/${anio} ${horas}:${minutos}`;
+  }
+
+  return rawDate;
+};
+
 export default function RecentTransactions({ transactions = [], onDelete, onUpdate }) {
-  const [filter, setFilter] = useState('all'); // 'all' | 'expense' | 'income' | 'savings'
+  const [filter, setFilter] = useState('all'); // 'all' | 'savings' | 'expense' | 'income' | 'retro-expense' | 'retro-income'
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   // Estados Modal Edición
@@ -12,6 +34,8 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
   const [editConcept, setEditConcept] = useState('');
   const [editAmount, setEditAmount] = useState('');
   const [editType, setEditType] = useState('expense');
+  const [editDate, setEditDate] = useState('');
+  const [editRetroactive, setEditRetroactive] = useState(false);
 
   // Estados Modal Eliminación
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -23,6 +47,8 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
     setEditConcept(tx.concept || tx.category || '');
     setEditAmount(tx.amount.toString());
     setEditType(tx.transaction_type || 'expense');
+    setEditDate(tx.transaction_date || tx.created_at?.split('T')[0] || new Date().toISOString().split('T')[0]);
+    setEditRetroactive(Boolean(tx.is_retroactive));
     setEditModalOpen(true);
   };
 
@@ -34,7 +60,9 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
       onUpdate(editTx.id, {
         amount: parsedAmount,
         concept: editConcept.toUpperCase(),
-        transaction_type: editType
+        transaction_type: editType,
+        transaction_date: editDate,
+        is_retroactive: editRetroactive
       });
     }
     setEditModalOpen(false);
@@ -53,12 +81,23 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
     setDeleteModalOpen(false);
   };
 
-  // Filtrar transacciones según la pestaña seleccionada
-  const filteredTransactions = transactions.filter((tx) => {
+  // 🌟 Ordenar transacciones de más reciente a más antigua basándose en la fecha contable (transaction_date)
+  const sortedTransactions = [...transactions].sort((a, b) => {
+    const dateA = new Date(a.transaction_date || a.created_at || 0);
+    const dateB = new Date(b.transaction_date || b.created_at || 0);
+    return dateB - dateA;
+  });
+
+  // Filtrar transacciones según la pestaña seleccionada utilizando estrictamente is_retroactive
+  const filteredTransactions = sortedTransactions.filter((tx) => {
     const isSavings = tx.category === 'AHORRO' || tx.concept?.includes('Abono a meta');
+    const isRetroactive = Boolean(tx.is_retroactive);
+
+    if (filter === 'savings') return isSavings;
     if (filter === 'expense') return !isSavings && tx.transaction_type === 'expense';
     if (filter === 'income') return !isSavings && tx.transaction_type === 'income';
-    if (filter === 'savings') return isSavings;
+    if (filter === 'retro-expense') return !isSavings && tx.transaction_type === 'expense' && isRetroactive;
+    if (filter === 'retro-income') return !isSavings && tx.transaction_type === 'income' && isRetroactive;
     return true; // 'all'
   });
 
@@ -74,12 +113,12 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
       <div className="border-4 border-black bg-white p-5 rounded-3xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-4 font-mono">
         
         {/* CABECERA CON TÍTULO Y BOTONES DE FILTRO */}
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3 border-b-2 border-black pb-3">
+        <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-3 border-b-2 border-black pb-3">
           <div>
             <h3 className="text-xs font-black uppercase text-black">🕒 Historial Últimos Movimientos</h3>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-between lg:justify-end">
+          <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto justify-between xl:justify-end">
             {/* Botón que abre la vista previa con Zoom */}
             <button
               type="button"
@@ -90,7 +129,7 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
               <span>🔍 📥 PDF (Zoom)</span>
             </button>
 
-            {/* Botones de filtro rápido */}
+            {/* Botones de filtro rápido con la misma estética unificada */}
             <div className="flex items-center gap-1 bg-stone-100 p-1 border-2 border-black rounded-2xl flex-wrap">
               <button
                 type="button"
@@ -128,6 +167,26 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
               >
                 🟢 Ingresos
               </button>
+              <button
+                type="button"
+                onClick={() => setFilter('retro-expense')}
+                className={`px-2 py-1 text-[10px] font-black uppercase rounded-xl transition-all cursor-pointer ${
+                  filter === 'retro-expense' ? 'bg-orange-500 text-white shadow' : 'bg-transparent text-orange-700 hover:bg-orange-100'
+                }`}
+                title="Filtrar Egresos Retroactivos"
+              >
+                🟠 Egresos Retro.
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilter('retro-income')}
+                className={`px-2 py-1 text-[10px] font-black uppercase rounded-xl transition-all cursor-pointer ${
+                  filter === 'retro-income' ? 'bg-amber-400 text-black shadow font-black' : 'bg-transparent text-amber-800 hover:bg-yellow-100'
+                }`}
+                title="Filtrar Ingresos Retroactivos"
+              >
+                🟡 Ingresos Retro.
+              </button>
             </div>
           </div>
         </div>
@@ -137,10 +196,18 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
           filter === 'savings' ? 'bg-blue-100 text-blue-950' :
           filter === 'expense' ? 'bg-rose-100 text-rose-950' :
           filter === 'income' ? 'bg-emerald-100 text-emerald-950' :
+          filter === 'retro-expense' ? 'bg-orange-100 text-orange-950' :
+          filter === 'retro-income' ? 'bg-yellow-100 text-black' :
           'bg-amber-100 text-black'
         }`}>
           <span>
-            Total ({filter === 'all' ? 'General' : filter === 'savings' ? 'Ahorros' : filter === 'expense' ? 'Egresos' : 'Ingresos'}):
+            Total ({
+              filter === 'all' ? 'General' : 
+              filter === 'savings' ? 'Ahorros' : 
+              filter === 'expense' ? 'Egresos' : 
+              filter === 'income' ? 'Ingresos' :
+              filter === 'retro-expense' ? 'Egresos Retroactivos' : 'Ingresos Retroactivos'
+            }):
           </span>
           <span className="text-sm font-black">
             {formatearMoneda(totalFilteredAmount)}
@@ -158,6 +225,10 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
               const isIncome = tx.transaction_type === 'income';
               const isSavings = tx.category === 'AHORRO' || tx.concept?.includes('Abono a meta');
               
+              // 🌟 Validación estrictamente basada en la bandera guardada
+              const isRetroactive = Boolean(tx.is_retroactive);
+              const formattedDate = formatearFechaLimpia(tx);
+
               let dotColor = 'bg-rose-500';
               let bgColorClass = 'bg-rose-500/10';
               let textColorClass = 'text-rose-700';
@@ -178,12 +249,26 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
                   className={`flex items-center justify-between p-3 border-2 border-black rounded-2xl shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] text-xs transition-all ${bgColorClass}`}
                 >
                   <div className="space-y-0.5">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <span className={`w-2.5 h-2.5 rounded-full border border-black ${dotColor}`} />
                       <span className="font-black uppercase block text-black">{tx.concept || tx.category}</span>
+                      
+                      {/* 🌟 ETIQUETA VISUAL RETROACTIVA LIMPIA */}
+                      {isRetroactive && (
+                        <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md border border-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] ${
+                          isIncome ? 'bg-yellow-300 text-black' : 'bg-orange-400 text-black'
+                        }`}>
+                          {isIncome ? 'Ingreso Retroactivo' : 'Egresos Retroactivo'}
+                        </span>
+                      )}
                     </div>
-                    <span className="text-[10px] text-stone-600 font-bold">
-                      {new Date(tx.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • <span className="uppercase">{tx.user_name || 'LUIS'}</span>
+                    
+                    <span className="text-[10px] text-stone-600 font-bold flex items-center gap-1">
+                      <span className={isRetroactive ? 'text-orange-600 font-black bg-orange-100 px-1.5 py-0.5 rounded border border-black/40' : ''}>
+                        📅 {formattedDate}
+                      </span> 
+                      <span>•</span>
+                      <span className="uppercase">{tx.user_name || 'LUIS'}</span>
                     </span>
                   </div>
 
@@ -260,6 +345,31 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
                   required 
                   className="border-4 border-black p-2 rounded-xl text-lg font-bold uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:outline-none focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all bg-white" 
                 />
+              </div>
+
+              <div className="flex flex-col">
+                <label className="text-sm font-black uppercase mb-1">Fecha del movimiento:</label>
+                <input 
+                  type="date" 
+                  value={editDate} 
+                  onChange={(e) => setEditDate(e.target.value)} 
+                  required 
+                  className="border-4 border-black p-2 rounded-xl text-sm font-bold uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:outline-none focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all bg-white cursor-pointer" 
+                />
+              </div>
+
+              {/* Casilla de control retroactivo en edición */}
+              <div className="flex items-center gap-2 bg-white/60 border-2 border-black p-3 rounded-xl shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                <input
+                  type="checkbox"
+                  id="editRetroToggle"
+                  checked={editRetroactive}
+                  onChange={(e) => setEditRetroactive(e.target.checked)}
+                  className="w-5 h-5 accent-amber-400 border-2 border-black rounded cursor-pointer"
+                />
+                <label htmlFor="editRetroToggle" className="text-xs font-black uppercase text-black cursor-pointer select-none">
+                  Marcar como movimiento retroactivo
+                </label>
               </div>
 
               <div className="flex flex-col">

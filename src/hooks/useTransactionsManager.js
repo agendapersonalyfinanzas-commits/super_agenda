@@ -22,12 +22,13 @@ export function useTransactionsManager(activeUser, auditorMode, isMasterAuditor,
       const userId = session.user.id;
       const userEmail = session.user.email;
 
+      // Ordenado por transaction_date como dicta el esquema de base de datos
       let transQuery = supabase
         .from('transactions')
         .select('*')
         .order('transaction_date', { ascending: false });
 
-      // 🌟 LÓGICA DE AUDITORÍA MULTICAMPO: Busca por UUID, correo o nombre para obtener los $10,000 de Ivonne
+      // Auditoría o filtrado normal respetando las políticas RLS de Supabase
       if (auditorMode && activeUser) {
         let targetId = null;
         let targetName = '';
@@ -64,7 +65,7 @@ export function useTransactionsManager(activeUser, auditorMode, isMasterAuditor,
           transQuery = transQuery.or(conditions.join(','));
         }
       } else {
-        // Modo normal: Consultar transacciones exclusivas del usuario autenticado
+        // Filtrado por correo de sesión actual exigido por las políticas RLS
         if (userEmail) {
           transQuery = transQuery.eq('auth_user_email', userEmail);
         } else if (userId) {
@@ -100,7 +101,6 @@ export function useTransactionsManager(activeUser, auditorMode, isMasterAuditor,
         setTotalIncome(incomeSum);
         setIsSampleData(false);
 
-        // Balance unificado asignando dinámicamente el nombre del usuario auditado
         const netBalance = incomeSum - expensesSum;
         let currentUserName = 'LUIS RICARDO';
 
@@ -133,13 +133,24 @@ export function useTransactionsManager(activeUser, auditorMode, isMasterAuditor,
       const amountVal = typeof data === 'object' ? aNumero(data.amount) : aNumero(data);
       const catVal = typeof data === 'object' ? aMayusculas(data.category) : 'GENERAL';
       const conceptVal = typeof data === 'object' ? aMayusculas(data.concept) : (type === 'expense' ? 'GASTO' : 'INGRESO');
+      
+      // Captura limpia de la fecha retroactiva seleccionada (o la actual por defecto)
+      const dateVal = (typeof data === 'object' && (data.date || data.transaction_date)) 
+        ? (data.date || data.transaction_date) 
+        : new Date().toISOString().split('T')[0];
+
+      // 🟢 Capturar la bandera explícita de retroactividad desde el formulario
+      const isRetroactiveVal = typeof data === 'object' ? Boolean(data.is_retroactive) : false;
 
       const inserted = await saveTransaction({
         transactionType: type,
         amount: amountVal,
         category: catVal,
         concept: conceptVal,
-        userName: activeUser
+        userName: activeUser,
+        date: dateVal,
+        transaction_date: dateVal,
+        is_retroactive: isRetroactiveVal // 👈 Pasada correctamente al servicio
       });
 
       await fetchTransactionsAndTotals();
@@ -167,7 +178,9 @@ export function useTransactionsManager(activeUser, auditorMode, isMasterAuditor,
       const payload = typeof updatedData === 'object' ? {
         amount: aNumero(updatedData.amount),
         concept: aMayusculas(updatedData.concept),
-        transaction_type: updatedData.transaction_type
+        transaction_type: updatedData.transaction_type,
+        transaction_date: updatedData.date || updatedData.transaction_date,
+        is_retroactive: Boolean(updatedData.is_retroactive) // 👈 Actualización de la bandera
       } : { amount: aNumero(updatedData) };
 
       await updateTransactionAmount(id, payload);

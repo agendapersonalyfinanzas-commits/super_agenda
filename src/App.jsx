@@ -9,7 +9,7 @@ import { procesarColaOffline } from './utils/offlineSync';
 import DashboardScreen from './components/UI/screens/DashboardScreen.jsx';
 import CalendarScreen from './components/UI/screens/CalendarScreen.jsx';
 import AnalyticsScreen from './components/UI/screens/AnalyticsScreen.jsx';
-import GameScreen from './components/Games/GamesScreen.jsx'; // 👈 1. Importamos la pantalla de juegos
+import GameScreen from './components/Games/GamesScreen.jsx';
 import Navigation from './components/UI/Navigation.jsx';
 
 // Imagen estática desde la carpeta public
@@ -20,12 +20,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [user_name, setuser_name] = useState(''); 
   const [activeTab, setActiveTab] = useState('finances'); // 'finances' | 'agenda' | 'metrics' | 'games'
-  const [selectedGame, setSelectedGame] = useState(null); // 👈 Controla qué juego específico se abre dentro de GamesScreen
-
-  // 🌟 PASO 1: ESTADOS PARA MODO DIOS / AUDITOR
-  const [isAuditor, setIsAuditor] = useState(false);
-  const [usersList, setUsersList] = useState([]);
-  const [selectedAuditedUser, setSelectedAuditedUser] = useState(null); // null = Mis propios datos
+  const [selectedGame, setSelectedGame] = useState(null); 
 
   // Estados para el formulario de Autenticación
   const [email, setEmail] = useState('');
@@ -44,10 +39,8 @@ export default function App() {
 
   // 🌟 SISTEMA DE SINCRONIZACIÓN OFFLINE
   useEffect(() => {
-    // 1. Procesa la cola local inmediatamente si hay tareas pendientes guardadas de antes
     procesarColaOffline();
 
-    // 2. Escucha cuando regrese la conexión a internet para sincronizar de inmediato
     const handleOnline = () => {
       console.log('🌐 Conexión restablecida. Ejecutando sincronización en segundo plano...');
       procesarColaOffline();
@@ -65,7 +58,6 @@ export default function App() {
       setSession(session);
       if (session) {
         fetchUserProfile(session.user.id);
-        checkAuditorStatus(); // 👈 PASO 1: Verificar si es auditor al cargar sesión
       }
       setLoading(false);
     });
@@ -76,48 +68,14 @@ export default function App() {
       setSession(session);
       if (session) {
         fetchUserProfile(session.user.id);
-        checkAuditorStatus(); // 👈 PASO 1: Verificar si es auditor al cambiar sesión
       } else {
         setuser_name('');
-        // Limpiar estados de auditor al cerrar sesión
-        setIsAuditor(false);
-        setUsersList([]);
-        setSelectedAuditedUser(null);
       }
       setLoading(false);
     });
 
     return () => subscription.unsubscribe();
   }, []);
-
-  // 🌟 PASO 1: Función para verificar si el usuario es Auditor
-  const checkAuditorStatus = async () => {
-    try {
-      const { data, error } = await supabase.rpc('is_secret_auditor');
-      
-      if (!error && data === true) {
-        setIsAuditor(true);
-        fetchUsersList(); // Si es auditor, cargamos la lista de todos los usuarios
-      } else {
-        setIsAuditor(false);
-      }
-    } catch (err) {
-      console.error('Error al verificar estado de auditor:', err);
-    }
-  };
-
-  // 🌟 PASO 1: Cargar la lista de todos los usuarios para el menú desplegable
-  const fetchUsersList = async () => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id, nombre, apellido_paterno, apellido_materno');
-
-    if (!error && data) {
-      setUsersList(data);
-    } else if (error) {
-      console.error('Error al cargar lista de usuarios para auditor:', error.message);
-    }
-  };
 
   const fetchUserProfile = async (userId) => {
     const { data, error } = await supabase
@@ -309,13 +267,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#Fef8e7] font-mono selection:bg-amber-300 relative pb-28">
       
-      <header className="bg-white border-b-4 border-black p-4 flex justify-between items-center px-6">
-        <div className="text-xs font-black uppercase tracking-wider">
-          ⭐ ¡BIENVENIDO, <span className="text-amber-600 underline">{user_name || session?.user?.email || 'USUARIO'}</span>!
-        </div>
-      </header>
-
-      {/* RENDERIZADO DE LAS PANTALLAS (INCLUYENDO JUEGOS) */}
+      {/* RENDERIZADO DE LAS PANTALLAS (DashboardScreen ya maneja su propio header dinámico e inteligente) */}
       <main className="p-4">
         {activeTab === 'finances' && <DashboardScreen />}
         {activeTab === 'agenda' && <CalendarScreen />}
@@ -327,7 +279,7 @@ export default function App() {
             setSelectedGame={setSelectedGame}
             onBack={() => {
               setSelectedGame(null);
-              setActiveTab('finances'); // Regresa a finanzas al salir de juegos
+              setActiveTab('finances');
             }}
           />
         )}

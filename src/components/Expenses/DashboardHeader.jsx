@@ -41,9 +41,19 @@ export default function DashboardHeader({
 
   const auditedName = getAuditedUserFullName();
 
+  // 🌟 Determinamos el nombre del saludo priorizando al usuario auditado o la prop recibida
+  const displayName = auditedName || user_name || activeUser || 'USUARIO';
+
   return (
     <div className="bg-[#FBBF24] border-4 border-black rounded-3xl p-3 sm:p-4 shadow-[6px_6px_0px_rgba(0,0,0,1)] flex flex-col gap-3 select-none w-full">
       
+      {/* 🌟 BANNER SUPERIOR DE BIENVENIDA DINÁMICO */}
+      <div className="w-full bg-white border-[3px] border-black rounded-2xl py-2 px-4 shadow-[4px_4px_0px_rgba(0,0,0,1)] text-center">
+        <h1 className="font-mono font-black text-xs sm:text-sm uppercase text-black tracking-wider truncate">
+          ✨ ¡BIENVENIDO, {displayName}!
+        </h1>
+      </div>
+
       {/* Estilos con vuelo frontal, giro suave y destellos de rayos solares */}
       <style>{`
         @keyframes woodstockErraticFlight {

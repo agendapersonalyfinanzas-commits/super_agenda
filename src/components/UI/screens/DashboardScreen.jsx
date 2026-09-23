@@ -7,7 +7,7 @@ import { supabase } from '../../../supabaseClient';
 import { formatearMoneda } from '../../../utils/moneda.js';
 import { exportTransactionsToPDF } from '../../../utils/pdfExportPlugin.js';
 import { guardarEnStorage, obtenerDeStorage } from '../../../utils/storage.js';
-import { agregarAColaOffline, procesarColaOffline } from '../../../utils/offlineSync.js';
+import { procesarColaOffline } from '../../../utils/offlineSync.js';
 
 // --- CUSTOM HOOKS MODULARES
 import { usePlayerManagement } from '../../../hooks/usePlayerManagement.js';
@@ -83,9 +83,12 @@ export default function DashboardScreen() {
   const [currentUser, setCurrentUser] = useState(() => obtenerDeStorage(USER_CACHE_KEY, null));
   const [auditorMode, setAuditorMode] = useState(false);
   const [selectedAuditedUser, setSelectedAuditedUser] = useState(null);
-  const [usersList, setUsersList] = useState(() => obtenerDeStorage(PROFILES_CACHE_KEY, [])); // 🌟 Lista de perfiles con respaldo
+  const [usersList, setUsersList] = useState(() => obtenerDeStorage(PROFILES_CACHE_KEY, [])); 
   const [isOcrOpen, setIsOcrOpen] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
+
+  // 📅 Estado para la Fecha Retroactiva en registros rápidos (por defecto hoy)
+  const [retroactiveDate, setRetroactiveDate] = useState(() => new Date().toISOString().split('T')[0]);
 
   // Estados locales para modales
   const [activeImageTarget, setActiveImageTarget] = useState(null);
@@ -152,6 +155,20 @@ export default function DashboardScreen() {
     return foundUser ? foundUser.id : currentUser?.id;
   }, [auditorMode, selectedAuditedUser, currentUser, usersList]);
 
+  // 🌟 Resolver de manera limpia el nombre real del usuario que se está mostrando/auditando para las vistas
+  const resolvedDisplayName = useMemo(() => {
+    if (auditorMode && selectedAuditedUser) {
+      const found = usersList.find(u => u.id === selectedAuditedUser || u.nombre === selectedAuditedUser);
+      if (found) {
+        return `${found.nombre || ''} ${found.apellido_paterno || ''}`.trim() || found.nombre;
+      }
+      if (typeof selectedAuditedUser === 'string' && !selectedAuditedUser.includes('-')) {
+        return selectedAuditedUser;
+      }
+    }
+    return playerManager.activeUser || currentUser?.email?.split('@')[0] || 'USUARIO';
+  }, [auditorMode, selectedAuditedUser, usersList, playerManager.activeUser, currentUser]);
+
   // --- 2. HOOK DE TRANSACCIONES ---
   const txManager = useTransactionsManager(
     targetUserForTx,
@@ -160,8 +177,8 @@ export default function DashboardScreen() {
     playerManager.availableUsersList
   );
 
-  // --- 3. HOOK DE BOTONERA RÁPIDA ---
-  const quickActionsManager = useQuickActionsManager();
+  // 🌟 Pasamos el usuario a auditar Y el booleano que indica si el modo auditoría está encendido
+  const quickActionsManager = useQuickActionsManager(selectedAuditedUser, auditorMode);
 
   // 🌟 Escuchar actualizaciones en tiempo real de abonos a metas para refrescar el balance y lista global al instante
   useEffect(() => {
@@ -284,6 +301,16 @@ export default function DashboardScreen() {
     setActiveImageTarget(null);
   };
 
+  // 🟢 Función unificada para asegurar que la bandera is_retroactive viaje intacta al hook de transacciones
+  const handleProcessTransactionWithRetroactive = (data, type) => {
+    const processedData = typeof data === 'object' ? {
+      ...data,
+      is_retroactive: Boolean(data.is_retroactive)
+    } : data;
+
+    txManager.handleSaveTransaction(processedData, type);
+  };
+
   return (
     <div className={`min-h-screen bg-[#Fef8e7] p-4 md:p-8 font-mono text-black pb-28 select-none relative ${isOffline ? 'pt-10' : ''}`}>
       
@@ -295,7 +322,7 @@ export default function DashboardScreen() {
       )}
 
       {activeTab === 'games' ? (
-        <GamesScreen activeUser={playerManager.activeUser} />
+        <GamesScreen activeUser={resolvedDisplayName} />
       ) : activeTab === 'agenda' ? (
         <div className="max-w-4xl mx-auto p-8 text-center font-black text-lg">📅 Pantalla de Agenda</div>
       ) : activeTab === 'metrics' ? (
@@ -337,8 +364,8 @@ export default function DashboardScreen() {
 
           {/* CABECERA */}
           <DashboardHeader 
-            user_name={currentUser?.email} 
-            activeUser={playerManager.activeUser} 
+            user_name={resolvedDisplayName} 
+            activeUser={resolvedDisplayName} 
             onOcrOpen={() => setIsOcrOpen(true)}
             isAuditor={auditorMode}
             usersList={usersList}
@@ -346,17 +373,8 @@ export default function DashboardScreen() {
             setSelectedAuditedUser={setSelectedAuditedUser}
           />
           
-          {/* 🌟 PANEL DE CONTROL DINÁMICO (Muestra el usuario auditado o el tuyo por defecto) */}
-          <PlayerControlPanel 
-            activeUser={
-              auditorMode && selectedAuditedUser 
-                ? (() => {
-                    const found = usersList.find(u => u.id === selectedAuditedUser);
-                    return found ? `${found.nombre} ${found.apellido_paterno || ''}`.trim() : playerManager.activeUser;
-                  })()
-                : playerManager.activeUser
-            } 
-          />
+          {/* 🌟 PANEL DE CONTROL DINÁMICO */}
+          <PlayerControlPanel activeUser={resolvedDisplayName} />
 
           <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <GlobalBalanceCard 
@@ -367,13 +385,14 @@ export default function DashboardScreen() {
             />
 
             <div className="md:col-span-2 space-y-6">
+              {/* 🌟 EGRESOS RÁPIDOS CON FECHA RETROACTIVA */}
               <QuickActionGrid 
                 title="💸 Registrar Egresos"
-                subtitle="Toca un botón para mover • O toca para registrar"
+                subtitle={`Viendo botones de ${resolvedDisplayName}`}
                 actions={quickActionsManager.quickExpenses}
                 selectedId={quickActionsManager.selectedExpenseId}
                 onSelect={(id) => quickActionsManager.handleExpenseCardClick ? quickActionsManager.handleExpenseCardClick(id, playerManager.isEditMode) : null}
-                onActionClick={(data, type) => txManager.handleSaveTransaction(data, type)}
+                onActionClick={handleProcessTransactionWithRetroactive}
                 onAddClick={(data, type) => quickActionsManager.handleAddAction(data, type)}
                 isEditMode={playerManager.isEditMode}
                 onEditImage={(id) => setActiveImageTarget(id)}
@@ -389,6 +408,8 @@ export default function DashboardScreen() {
                 isExpense={true}
                 type="expense"
                 presetIcons={PRESET_ICONS}
+                retroactiveDate={retroactiveDate}
+                setRetroactiveDate={setRetroactiveDate}
                 onReorderActions={(newItems, type) => {
                   if (typeof quickActionsManager.handleReorderActions === 'function') {
                     quickActionsManager.handleReorderActions(newItems, type);
@@ -396,11 +417,12 @@ export default function DashboardScreen() {
                 }}
               />
 
+              {/* 🌟 INGRESOS RÁPIDOS CON FECHA RETROACTIVA */}
               <QuickActionGrid 
                 title="💰 Registrar Ingresos"
-                subtitle={`Guarda tus entradas de dinero como ${playerManager.activeUser}`}
+                subtitle={`Viendo botones de ${resolvedDisplayName}`}
                 actions={quickActionsManager.quickIncomes}
-                onActionClick={(data, type) => txManager.handleSaveTransaction(data, type)}
+                onActionClick={handleProcessTransactionWithRetroactive}
                 onAddClick={(data, type) => quickActionsManager.handleAddAction(data, type)}
                 isEditMode={playerManager.isEditMode}
                 onEditImage={(id) => setActiveImageTarget(id)}
@@ -416,6 +438,8 @@ export default function DashboardScreen() {
                 isExpense={false}
                 type="income"
                 presetIcons={PRESET_ICONS}
+                retroactiveDate={retroactiveDate}
+                setRetroactiveDate={setRetroactiveDate}
                 onReorderActions={(newItems, type) => {
                   if (typeof quickActionsManager.handleReorderActions === 'function') {
                     quickActionsManager.handleReorderActions(newItems, type);
@@ -434,9 +458,17 @@ export default function DashboardScreen() {
             </div>
           </section>
 
+          {/* 🌟 AVANCE DE DISCIPLINA FINANCIERA */}
           <PlayerProgressSection 
-            activePlayers={txManager.activePlayers}
-            activeUser={playerManager.activeUser}
+            activePlayers={
+              auditorMode && selectedAuditedUser
+                ? [{
+                    user_name: resolvedDisplayName,
+                    balance: txManager.totalIncome - txManager.weeklyTotal
+                  }]
+                : txManager.activePlayers
+            }
+            activeUser={resolvedDisplayName}
             isSampleData={txManager.isSampleData}
           />
         </div>
@@ -470,6 +502,8 @@ export default function DashboardScreen() {
           setAmount={setCustomAmount}
           cat={customCategory}
           setCat={setCustomCategory}
+          date={retroactiveDate}
+          setDate={setRetroactiveDate}
           presetIcons={PRESET_ICONS}
           onSelectIcon={(iconUrl) => setSelectedIcon(iconUrl)}
         />

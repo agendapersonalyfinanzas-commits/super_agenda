@@ -43,7 +43,7 @@ export default function QuickActionGrid(props) {
   const [btnName, setBtnName] = useState('');
   const [btnCat, setBtnCat] = useState('VARIOS');
   const [btnIcon, setBtnIcon] = useState(DEFAULT_PRESET_ICONS[0]);
-  const [isConfigCatOpen, setIsConfigCatOpen] = useState(false); // 🟢 Dropdown personalizado para config
+  const [isConfigCatOpen, setIsConfigCatOpen] = useState(false);
 
   // Estados para transacción (NUEVO GASTO / INGRESO)
   const [transOpen, setTransOpen] = useState(false);
@@ -51,7 +51,9 @@ export default function QuickActionGrid(props) {
   const [transAmount, setTransAmount] = useState('');
   const [transConcept, setTransConcept] = useState('');
   const [transCat, setTransCat] = useState('VARIOS');
-  const [isTransCatOpen, setIsTransCatOpen] = useState(false); // 🟢 Dropdown personalizado para transacción
+  const [isRetroactive, setIsRetroactive] = useState(false); // 🟢 Controla si es retroactivo o no
+  const [transDate, setTransDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [isTransCatOpen, setIsTransCatOpen] = useState(false);
 
   // Categorías dinámicas desde Supabase / Caché local
   const [categories, setCategories] = useState(() => 
@@ -122,6 +124,8 @@ export default function QuickActionGrid(props) {
       setTransAmount(action.amount > 0 ? action.amount.toString() : '');
       setTransConcept(action.label || action.name || action.concept || '');
       setTransCat(action.category || 'VARIOS');
+      setIsRetroactive(false); // Por defecto inicia limpio (toma fecha actual)
+      setTransDate(new Date().toISOString().split('T')[0]);
       setTransOpen(true);
     }
   };
@@ -184,11 +188,16 @@ export default function QuickActionGrid(props) {
     const finalAmount = Number(transAmount);
     if (isNaN(finalAmount) || finalAmount <= 0) return alert('Ingresa un monto válido.');
 
+    // 📅 Si activó retroactivo usa la fecha elegida, de lo contrario fuerza la fecha de hoy
+    const finalDate = isRetroactive ? transDate : new Date().toISOString().split('T')[0];
+
     const transactionData = {
       amount: finalAmount,
       concept: transConcept.toUpperCase(),
       category: transCat.toUpperCase(),
-      type: type
+      type: type,
+      date: finalDate,
+      is_retroactive: Boolean(isRetroactive) // 🟢 ¡Aquí faltaba incluir la bandera!
     };
 
     if (processTxHandler) {
@@ -200,7 +209,7 @@ export default function QuickActionGrid(props) {
   return (
     <div className={`p-5 rounded-3xl border-4 border-black ${bgColor} mb-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] font-mono`}>
       
-      <div className="flex items-center justify-between mb-4 border-b-4 border-black pb-2">
+      <div className="flex items-center justify-between mb-4 border-b-4 border-black pb-2 flex-wrap gap-2">
         <h3 className="font-black text-xl uppercase text-black tracking-wide">{title}</h3>
         <div className="flex items-center gap-2">
           <button
@@ -279,7 +288,6 @@ export default function QuickActionGrid(props) {
                   />
                 </div>
                 
-                {/* DROPDOWN RETRO-COMIC PERSONALIZADO PARA CONFIG */}
                 <div className="flex-1 relative">
                   <label className="text-xs font-black uppercase text-black block mb-1">Categoría:</label>
                   <button
@@ -364,7 +372,7 @@ export default function QuickActionGrid(props) {
         </div>
       )}
 
-      {/* 🟢 MODAL DE NUEVO GASTO / NUEVO INGRESO (CON DROPDOWN RETRO-COMIC PERSONALIZADO) */}
+      {/* 🟢 MODAL DE NUEVO GASTO / NUEVO INGRESO CON OPCIÓN RETROACTIVA */}
       {transOpen && transAction && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div className={`${type === 'expense' ? 'bg-rose-100' : 'bg-green-100'} border-4 border-black p-6 rounded-3xl w-full max-w-sm shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] animate-bounce-short`}>
@@ -387,7 +395,7 @@ export default function QuickActionGrid(props) {
                 />
               </div>
 
-              {/* CATEGORÍA (DROPDOWN RETRO-COMIC FILTRADO POR TIPO) + BOTÓN DE GESTIÓN */}
+              {/* CATEGORÍA */}
               <div className="flex flex-col relative">
                 <div className="flex justify-between items-center mb-1">
                   <label className="text-sm font-black uppercase text-black">Categoría:</label>
@@ -400,7 +408,6 @@ export default function QuickActionGrid(props) {
                   </button>
                 </div>
 
-                {/* BOTÓN PERSONALIZADO QUE SIMULA EL SELECT */}
                 <button
                   type="button"
                   onClick={() => setIsTransCatOpen(!isTransCatOpen)}
@@ -410,7 +417,6 @@ export default function QuickActionGrid(props) {
                   <span className="font-black text-base">▼</span>
                 </button>
 
-                {/* LISTA DESPLEGABLE ESTILO COMIC */}
                 {isTransCatOpen && (
                   <div className="absolute top-full left-0 right-0 mt-2 bg-white border-4 border-black rounded-xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] max-h-48 overflow-y-auto z-50">
                     <div
@@ -436,6 +442,35 @@ export default function QuickActionGrid(props) {
                           <span>{c.icono || '📌'}</span> {c.nombre}
                         </div>
                     ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 📅 INTERRUPTOR DE FECHA RETROACTIVA */}
+              <div className="flex flex-col gap-2 bg-white/60 border-2 border-black p-3 rounded-2xl shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="retroToggle"
+                    checked={isRetroactive}
+                    onChange={(e) => setIsRetroactive(e.target.checked)}
+                    className="w-5 h-5 accent-amber-400 border-2 border-black rounded cursor-pointer"
+                  />
+                  <label htmlFor="retroToggle" className="text-xs font-black uppercase text-black cursor-pointer select-none">
+                    📅 ¿Es un movimiento de una fecha pasada?
+                  </label>
+                </div>
+
+                {/* El selector de fecha solo se muestra si la casilla está marcada */}
+                {isRetroactive && (
+                  <div className="flex flex-col mt-2 pt-2 border-t-2 border-black/20 animate-in fade-in duration-200">
+                    <label className="text-xs font-black uppercase mb-1 text-stone-700">Fecha en que ocurrió:</label>
+                    <input
+                      type="date"
+                      value={transDate}
+                      onChange={(e) => setTransDate(e.target.value)}
+                      className="border-2 border-black p-2 rounded-xl text-sm font-bold uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] bg-white focus:outline-none text-black cursor-pointer"
+                    />
                   </div>
                 )}
               </div>

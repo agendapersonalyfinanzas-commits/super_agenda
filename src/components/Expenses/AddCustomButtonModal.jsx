@@ -13,15 +13,16 @@ export default function AddCustomButtonModal({
   setAmount, 
   cat = 'VARIOS', 
   setCat,
+  date = new Date().toISOString().split('T')[0],
+  setDate,
   presetIcons = [],
   onSelectIcon 
 }) {
-  // Estado local para garantizar fluidez inmediata al escribir
   const [internalName, setInternalName] = useState(name);
   const [internalAmount, setInternalAmount] = useState(amount);
   const [internalCat, setInternalCat] = useState(cat);
+  const [internalDate, setInternalDate] = useState(date);
 
-  // 🟢 Carga dinámica de categorías desde caché local y Supabase
   const [categories, setCategories] = useState(() => 
     obtenerDeStorage('family_categories_cache', [])
   );
@@ -32,12 +33,11 @@ export default function AddCustomButtonModal({
   const fileInputRef = useRef(null);
   const videoRef = useRef(null);
 
-  // Sincronizar si las props cambian externamente
   useEffect(() => { setInternalName(name); }, [name]);
   useEffect(() => { setInternalAmount(amount); }, [amount]);
   useEffect(() => { setInternalCat(cat); }, [cat]);
+  useEffect(() => { setInternalDate(date); }, [date]);
 
-  // Cargar categorías reales del usuario desde Supabase
   const fetchCategories = async () => {
     if (!navigator.onLine) return;
     try {
@@ -63,7 +63,6 @@ export default function AddCustomButtonModal({
     if (onSelectIcon) onSelectIcon(iconUrl);
   };
 
-  // Subir archivo desde dispositivo
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -75,7 +74,6 @@ export default function AddCustomButtonModal({
     }
   };
 
-  // Iniciar la cámara del dispositivo
   const startCamera = async () => {
     setShowCamera(true);
     try {
@@ -89,7 +87,6 @@ export default function AddCustomButtonModal({
     }
   };
 
-  // Capturar foto
   const takePhoto = () => {
     const video = videoRef.current;
     if (video) {
@@ -110,7 +107,6 @@ export default function AddCustomButtonModal({
     }
   };
 
-  // Manejadores seguros
   const updateName = manejarInputMayusculas((val) => {
     setInternalName(val);
     if (typeof setName === 'function') setName(val);
@@ -128,6 +124,12 @@ export default function AddCustomButtonModal({
     if (typeof setCat === 'function') setCat(val);
   };
 
+  const updateDate = (e) => {
+    const val = e.target.value;
+    setInternalDate(val);
+    if (typeof setDate === 'function') setDate(val);
+  };
+
   const handleFormSubmit = (e) => {
     if (e && typeof e.preventDefault === 'function') {
       e.preventDefault();
@@ -143,7 +145,7 @@ export default function AddCustomButtonModal({
         <div className="w-full max-w-md bg-white border-4 border-black rounded-3xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-6 space-y-4 max-h-[90vh] overflow-y-auto">
           
           <div className="flex justify-between items-center border-b-4 border-black pb-2 bg-amber-100 -mx-6 -mt-6 p-4 rounded-t-[20px]">
-            <h3 className="font-black uppercase text-sm text-black">✨ Configurar Botón Rápido</h3>
+            <h3 className="font-black uppercase text-sm text-black">✨ Configurar Botón / Registro</h3>
             <button 
               type="button" 
               onClick={onClose} 
@@ -168,7 +170,7 @@ export default function AddCustomButtonModal({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-[10px] font-black uppercase mb-1 text-stone-600">
                   Monto Predeterminado
@@ -185,29 +187,40 @@ export default function AddCustomButtonModal({
                 />
               </div>
 
-              {/* 🟢 CATEGORÍAS DINÁMICAS */}
               <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label className="block text-[10px] font-black uppercase text-stone-600">
-                    Categoría
-                  </label>
-                </div>
-                <select 
-                  value={internalCat} 
-                  onChange={updateCat} 
-                  className="w-full px-3 py-2 border-2 border-black rounded-xl text-sm font-bold bg-white text-black uppercase focus:outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer"
-                >
-                  <option value="VARIOS">📌 VARIOS</option>
-                  {categories.map((c) => (
-                    <option key={c.id || c.nombre} value={c.nombre}>
-                      {c.icono || '📌'} {c.nombre}
-                    </option>
-                  ))}
-                </select>
+                <label className="block text-[10px] font-black uppercase mb-1 text-stone-600">
+                  Fecha del Registro
+                </label>
+                <input 
+                  type="date" 
+                  required 
+                  value={internalDate} 
+                  onChange={updateDate} 
+                  className="w-full px-3 py-2 border-2 border-black rounded-xl text-sm font-bold text-black bg-white focus:outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer" 
+                />
               </div>
             </div>
 
-            {/* BOTÓN PARA CREAR / EDITAR CATEGORÍAS */}
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <label className="block text-[10px] font-black uppercase text-stone-600">
+                  Categoría
+                </label>
+              </div>
+              <select 
+                value={internalCat} 
+                onChange={updateCat} 
+                className="w-full px-3 py-2 border-2 border-black rounded-xl text-sm font-bold bg-white text-black uppercase focus:outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer"
+              >
+                <option value="VARIOS">📌 VARIOS</option>
+                {categories.map((c) => (
+                  <option key={c.id || c.nombre} value={c.nombre}>
+                    {c.icono || '📌'} {c.nombre}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="flex justify-end">
               <button
                 type="button"
@@ -218,7 +231,6 @@ export default function AddCustomButtonModal({
               </button>
             </div>
 
-            {/* Opciones de Icono: Precargados, Archivo Local o Cámara */}
             <div>
               <label className="block text-[10px] font-black uppercase mb-2 text-stone-600">
                 Imagen o Personaje
@@ -292,13 +304,12 @@ export default function AddCustomButtonModal({
               type="submit" 
               className="w-full py-3 bg-amber-400 text-black border-4 border-black rounded-xl font-black text-xs uppercase tracking-wider shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-amber-300 active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all cursor-pointer mt-2"
             >
-              Guardar Acceso
+              Guardar Registro
             </button>
           </form>
         </div>
       </div>
 
-      {/* MODAL DESPLEGABLE DE GESTIÓN DE CATEGORÍAS */}
       {showCategoryManager && (
         <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/70 p-4">
           <CategoryManager
