@@ -458,16 +458,9 @@ export default function DashboardScreen() {
             </div>
           </section>
 
-          {/* 🌟 AVANCE DE DISCIPLINA FINANCIERA */}
+          {/* 🏆 AVANCE DE DISCIPLINA FINANCIERA */}
           <PlayerProgressSection 
-            activePlayers={
-              auditorMode && selectedAuditedUser
-                ? [{
-                    user_name: resolvedDisplayName,
-                    balance: txManager.totalIncome - txManager.weeklyTotal
-                  }]
-                : txManager.activePlayers
-            }
+            activePlayers={txManager.activePlayers}
             activeUser={resolvedDisplayName}
             isSampleData={txManager.isSampleData}
           />

@@ -2,8 +2,15 @@ import React from 'react';
 import { formatearMoneda } from '../../utils/moneda.js';
 
 export default function PlayerProgressSection({ activePlayers, activeUser }) {
-  const playerData = activePlayers?.[0] || { user_name: activeUser || 'LUIS RICARDO', balance: 0 };
-  const balance = playerData.balance || 0;
+  // 🟢 El nombre principal debe ser estrictamente el usuario activo o auditado actual
+  const displayName = activeUser || 'USUARIO';
+
+  // Buscamos su balance correspondiente en activePlayers
+  const matchedPlayer = activePlayers?.find(
+    (p) => p.user_name?.toUpperCase() === displayName.toUpperCase()
+  ) || activePlayers?.[0];
+
+  const balance = matchedPlayer?.balance !== undefined ? matchedPlayer.balance : 0;
 
   return (
     <section className="border-4 border-black bg-amber-400 p-6 rounded-3xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-4 select-none font-mono">
@@ -14,7 +21,7 @@ export default function PlayerProgressSection({ activePlayers, activeUser }) {
         <div className="space-y-2">
           <div className="flex justify-between items-center text-xs sm:text-sm font-black uppercase">
             <span className="flex items-center gap-2">
-              <span>👑</span> {playerData.user_name} (CUENTA PRINCIPAL)
+              <span>👑</span> {displayName}
             </span>
             <span className={balance >= 0 ? 'text-emerald-600' : 'text-rose-600'}>
               {formatearMoneda(balance)} {balance >= 0 ? 'DISPONIBLE' : 'DEUDA'}
