@@ -13,10 +13,11 @@ const AVAILABLE_AVATARS = [
   { id: 'schroader', name: 'Schroeder', src: '/juego-schroader.png' },
 ];
 
-// --- SINTETIZADOR DE AUDIO 8-BIT (WEB AUDIO API) ---
+// --- SINTETIZADOR DE AUDIO 8-BIT Y MÚSICA POR ESTADO (WEB AUDIO API) ---
 class RetroSynth {
   constructor() {
     this.ctx = null;
+    this.musicInterval = null;
   }
   init() {
     if (!this.ctx) {
@@ -57,6 +58,46 @@ class RetroSynth {
     this.playTone(600, 'square', 0.4, 0.05, 800);
     setTimeout(() => this.playTone(800, 'square', 0.4, 0.05, 600), 400);
   }
+
+  stopMusic() {
+    if (this.musicInterval) {
+      clearInterval(this.musicInterval);
+      this.musicInterval = null;
+    }
+  }
+
+  // 🎶 Melodías de fondo chip-tune adaptadas a cada estado emocional
+  playStateMusic(state) {
+    this.stopMusic();
+    if (!this.ctx) return;
+
+    let notes = [];
+    let tempo = 300;
+
+    if (state === 'ACE_PILOT') {
+      notes = [523.25, 659.25, 783.99, 1046.50]; // Arpegio triunfal (Modo Dios)
+      tempo = 250;
+    } else if (state === 'STABLE_FLIGHT') {
+      notes = [440, 493.88, 523.25, 587.33]; // Melodía fluida y tranquila (Crucero)
+      tempo = 400;
+    } else if (state === 'DANGER_ZONE') {
+      notes = [370, 415.30, 370, 415.30]; // Tono tenso alternado (Alerta)
+      tempo = 200;
+    } else if (state === 'MAYDAY') {
+      notes = [220, 150, 220, 150]; // Alarma grave y caótica (Peligro crítico)
+      tempo = 160;
+    }
+
+    let index = 0;
+    this.musicInterval = setInterval(() => {
+      if (notes.length > 0) {
+        const freq = notes[index % notes.length];
+        const type = state === 'MAYDAY' ? 'sawtooth' : state === 'DANGER_ZONE' ? 'square' : 'triangle';
+        this.playTone(freq, type, tempo / 1000 * 0.7, 0.04);
+        index++;
+      }
+    }, tempo);
+  }
 }
 
 let audioSynth = null; 
@@ -79,26 +120,43 @@ export default function BaronRojoGame({ activeUser, onBack }) {
     if (!audioSynth) audioSynth = new RetroSynth();
     audioSynth.init();
     setAudioEnabled(true);
+    if (audioSynth) audioSynth.playStateMusic(flightState);
   };
 
-  // Calcular estado de vuelo y diálogos según el ISF real
+  // Calcular estado de vuelo, diálogos y reproducir musiquita emocional según el ISF real
   useEffect(() => {
     if (isfScore >= 80) {
       setFlightState('ACE_PILOT');
       setActiveComicPopup('¡TOMA ESTO, BARÓN! ¡MIS AHORROS SON DE ACERO!');
-      if (audioEnabled && audioSynth) audioSynth.playCoin();
+      if (audioEnabled && audioSynth) {
+        audioSynth.playCoin();
+        audioSynth.playStateMusic('ACE_PILOT');
+      }
     } else if (isfScore >= 50) {
       setFlightState('STABLE_FLIGHT');
       setActiveComicPopup('VUELO TRANQUILO. ¡A MANTENER EL RUMBO!');
+      if (audioEnabled && audioSynth) {
+        audioSynth.playStateMusic('STABLE_FLIGHT');
+      }
     } else if (isfScore >= 20) {
       setFlightState('DANGER_ZONE');
       setActiveComicPopup('¡TURBULENCIA FINANCIERA! ¡ME ESTÁN ALCANZANDO!');
-      if (audioEnabled && audioSynth) audioSynth.playSiren();
+      if (audioEnabled && audioSynth) {
+        audioSynth.playSiren();
+        audioSynth.playStateMusic('DANGER_ZONE');
+      }
     } else {
       setFlightState('MAYDAY');
       setActiveComicPopup('¡MAYDAY! ¡MAYDAY! ¡FUEGO ENEMIGO EN EL MOTOR!');
-      if (audioEnabled && audioSynth) audioSynth.playExplosion();
+      if (audioEnabled && audioSynth) {
+        audioSynth.playExplosion();
+        audioSynth.playStateMusic('MAYDAY');
+      }
     }
+
+    return () => {
+      if (audioSynth) audioSynth.stopMusic();
+    };
   }, [isfScore, audioEnabled]);
 
   // Efectos de sonido ambientales de combate según el estado
@@ -138,7 +196,10 @@ export default function BaronRojoGame({ activeUser, onBack }) {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={onBack}
+            onClick={() => {
+              if (audioSynth) audioSynth.stopMusic();
+              onBack();
+            }}
             className="bg-black text-white border-2 border-black px-3 py-1.5 rounded-xl text-[11px] font-black shadow-[2px_2px_0px_rgba(255,255,255,1)] cursor-pointer hover:bg-stone-800 transition-all"
           >
             ↩️ Menú
@@ -259,7 +320,7 @@ export default function BaronRojoGame({ activeUser, onBack }) {
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs">
             <div className="bg-yellow-400 border-4 border-black p-4 rounded-xl transform -skew-x-6 text-center cursor-pointer hover:scale-105 transition-transform shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
               <h2 className="text-xl font-black uppercase text-black">¡Haz clic para iniciar!</h2>
-              <p className="font-bold text-xs text-stone-800">Activa el Motor de Audio y Vuelo</p>
+              <p className="font-bold text-xs text-stone-800">Activa la Música y el Motor de Vuelo</p>
             </div>
           </div>
         )}
@@ -302,9 +363,9 @@ export default function BaronRojoGame({ activeUser, onBack }) {
           </div>
         </div>
 
-        {/* EL BARÓN ROJO */}
+        {/* EL BARÓN ROJO (Sin sombras) */}
         <div 
-          className="absolute z-25 transition-all duration-1000 floating flex flex-col items-center drop-shadow-[10px_10px_0px_rgba(0,0,0,0.5)]"
+          className="absolute z-25 transition-all duration-1000 floating flex flex-col items-center"
           style={{ 
             top: '38%',
             right: flightState !== 'MAYDAY' ? '5%' : 'auto',
@@ -324,9 +385,9 @@ export default function BaronRojoGame({ activeUser, onBack }) {
           />
         </div>
 
-        {/* AVATAR DEL JUGADOR */}
+        {/* AVATAR DEL JUGADOR (Sin sombras) */}
         <div 
-          className="absolute z-30 transition-all duration-700 floating drop-shadow-[12px_12px_0px_rgba(0,0,0,0.6)]"
+          className="absolute z-30 transition-all duration-700 floating"
           style={{ 
             top: flightState === 'ACE_PILOT' ? '42%' : flightState === 'MAYDAY' ? '32%' : '42%',
             left: flightState === 'ACE_PILOT' ? '35%' : flightState === 'MAYDAY' ? '35%' : '15%',
@@ -388,7 +449,7 @@ export default function BaronRojoGame({ activeUser, onBack }) {
                   <div className={`p-1 rounded-xl border-2 transition-colors ${
                     isSelected ? 'bg-yellow-400 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-gray-100 border-gray-300'
                   }`}>
-                    <img src={avatar.src} alt={avatar.name} className="w-7 h-7 object-contain drop-shadow-xs" />
+                    <img src={avatar.src} alt={avatar.name} className="w-7 h-7 object-contain" />
                   </div>
                 </button>
               );

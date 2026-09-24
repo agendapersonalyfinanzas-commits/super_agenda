@@ -120,7 +120,7 @@ export default function DashboardHeader({
             <img 
               src="/juego-woodsock-piloto.png" 
               alt="Woodstock Piloto" 
-              className="woodstock-img-flip w-20 h-20 object-contain drop-shadow-[4px_4px_0px_rgba(0,0,0,1)] transition-transform"
+              className="woodstock-img-flip w-20 h-20 object-contain transition-transform"
               onError={(e) => { e.target.style.display = 'none'; }}
             />
           </div>
