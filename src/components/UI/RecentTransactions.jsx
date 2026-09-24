@@ -7,13 +7,11 @@ const formatearFechaLimpia = (tx) => {
   const rawDate = tx.transaction_date || tx.created_at;
   if (!rawDate) return '';
 
-  // Si es una fecha simple tipo "YYYY-MM-DD", la separamos directamente sin que la afecte el huso horario
   if (typeof rawDate === 'string' && rawDate.length === 10 && rawDate.includes('-')) {
     const [anio, mes, dia] = rawDate.split('-');
     return `${dia}/${mes}/${anio}`;
   }
 
-  // Si incluye hora y formato ISO completo
   const fecha = new Date(rawDate);
   if (!isNaN(fecha)) {
     const dia = String(fecha.getUTCDate()).padStart(2, '0');
@@ -112,17 +110,15 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
     return true; // 'all'
   });
 
-  // 🌟 Cálculo inteligente del total: Balance Netto (Ingresos - Egresos) en 'all', o suma específica en filtros
+  // 🌟 Cálculo inteligente del total: Balance Neto en 'all', o suma específica en filtros
   const totalFilteredAmount = useMemo(() => {
     if (filter === 'all') {
       return filteredTransactions.reduce((acc, tx) => {
         const amount = Number(tx.amount || 0);
         const isIncome = tx.transaction_type === 'income' && !(tx.category === 'AHORRO' || tx.concept?.includes('Abono a meta'));
-        // Ingresos suman, egresos y ahorros restan para dar el balance neto real
         return isIncome ? acc + amount : acc - amount;
       }, 0);
     } else {
-      // Para filtros específicos, suma el total de esos movimientos
       return filteredTransactions.reduce((acc, tx) => acc + Number(tx.amount || 0), 0);
     }
   }, [filteredTransactions, filter]);
@@ -130,6 +126,11 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
   if (!transactions || transactions.length === 0) {
     return null;
   }
+
+  // 🟢 Determinamos si el total actual debe mostrarse en rojo y con signo negativo (Egresos)
+  const isExpenseFilter = filter === 'expense' || filter === 'retro-expense';
+  const isNegativeBalance = filter === 'all' && totalFilteredAmount < 0;
+  const showRedNegative = isExpenseFilter || isNegativeBalance;
 
   return (
     <>
@@ -214,7 +215,7 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
           </div>
         </div>
 
-        {/* 🌟 BARRA DE SUMA TOTAL / BALANCE NETO */}
+        {/* 🌟 BARRA DE SUMA TOTAL CON SIGNO Y COLOR ADECUADO */}
         <div className={`p-3 border-2 border-black rounded-2xl flex justify-between items-center text-xs font-black uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${
           filter === 'savings' ? 'bg-blue-100 text-blue-950' :
           filter === 'expense' ? 'bg-rose-100 text-rose-950' :
@@ -231,8 +232,12 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
               filter === 'retro-expense' ? 'Egresos Retroactivos' : 'Ingresos Retroactivos'
             }):`}
           </span>
-          <span className={`text-sm font-black ${filter === 'all' && totalFilteredAmount < 0 ? 'text-rose-600' : ''}`}>
-            {totalFilteredAmount < 0 ? `-${formatearMoneda(Math.abs(totalFilteredAmount))}` : formatearMoneda(totalFilteredAmount)}
+          <span className={`text-sm font-black ${showRedNegative ? 'text-rose-600' : ''}`}>
+            {isExpenseFilter && totalFilteredAmount > 0 
+              ? `-${formatearMoneda(totalFilteredAmount)}`
+              : isNegativeBalance
+                ? `-${formatearMoneda(Math.abs(totalFilteredAmount))}`
+                : formatearMoneda(totalFilteredAmount)}
           </span>
         </div>
 
@@ -247,7 +252,6 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
               const isIncome = tx.transaction_type === 'income';
               const isSavings = tx.category === 'AHORRO' || tx.concept?.includes('Abono a meta');
               
-              // 🌟 Validación estrictamente basada en la bandera guardada
               const isRetroactive = Boolean(tx.is_retroactive);
               const formattedDate = formatearFechaLimpia(tx);
 
@@ -275,7 +279,6 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
                       <span className={`w-2.5 h-2.5 rounded-full border border-black ${dotColor}`} />
                       <span className="font-black uppercase block text-black">{tx.concept || tx.category}</span>
                       
-                      {/* 🌟 ETIQUETA VISUAL RETROACTIVA LIMPIA */}
                       {isRetroactive && (
                         <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md border border-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] ${
                           isIncome ? 'bg-yellow-300 text-black' : 'bg-orange-400 text-black'
