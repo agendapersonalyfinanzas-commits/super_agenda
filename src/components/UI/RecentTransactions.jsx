@@ -1,24 +1,35 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { formatearMoneda } from '../../utils/moneda.js';
 import PDFPreviewModal from './PDFPreviewModal.jsx';
 
-// 🟢 Helper para mostrar fecha y hora limpia sin milisegundos ni formatos extraños
+// 🟢 Helper seguro para mostrar fecha y hora local exacta sin desfases de UTC
 const formatearFechaLimpia = (tx) => {
   const rawDate = tx.transaction_date || tx.created_at;
   if (!rawDate) return '';
 
+  // Si es una fecha simple tipo "YYYY-MM-DD", la separamos directamente sin que la afecte el huso horario
+  if (typeof rawDate === 'string' && rawDate.length === 10 && rawDate.includes('-')) {
+    const [anio, mes, dia] = rawDate.split('-');
+    return `${dia}/${mes}/${anio}`;
+  }
+
+  // Si incluye hora y formato ISO completo
   const fecha = new Date(rawDate);
   if (!isNaN(fecha)) {
-    const dia = String(fecha.getDate()).padStart(2, '0');
-    const mes = String(fecha.getMonth() + 1).padStart(2, '0');
-    const anio = fecha.getFullYear();
-    const horas = String(fecha.getHours()).padStart(2, '0');
-    const minutos = String(fecha.getMinutes()).padStart(2, '0');
+    const dia = String(fecha.getUTCDate()).padStart(2, '0');
+    const mes = String(fecha.getUTCMonth() + 1).padStart(2, '0');
+    const anio = fecha.getUTCFullYear();
 
-    if (horas === '00' && minutos === '00' && !rawDate.includes('T')) {
-      return `${dia}/${mes}/${anio}`;
+    if (rawDate.includes('T') && (fecha.getHours() !== 0 || fecha.getMinutes() !== 0)) {
+      const localDia = String(fecha.getDate()).padStart(2, '0');
+      const localMes = String(fecha.getMonth() + 1).padStart(2, '0');
+      const localAnio = fecha.getFullYear();
+      const localHoras = String(fecha.getHours()).padStart(2, '0');
+      const localMinutos = String(fecha.getMinutes()).padStart(2, '0');
+      return `${localDia}/${localMes}/${localAnio} ${localHoras}:${localMinutos}`;
     }
-    return `${dia}/${mes}/${anio} ${horas}:${minutos}`;
+
+    return `${dia}/${mes}/${anio}`;
   }
 
   return rawDate;
@@ -101,8 +112,20 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
     return true; // 'all'
   });
 
-  // 🌟 Calcular la suma total de los movimientos filtrados actuales
-  const totalFilteredAmount = filteredTransactions.reduce((acc, tx) => acc + Number(tx.amount || 0), 0);
+  // 🌟 Cálculo inteligente del total: Balance Netto (Ingresos - Egresos) en 'all', o suma específica en filtros
+  const totalFilteredAmount = useMemo(() => {
+    if (filter === 'all') {
+      return filteredTransactions.reduce((acc, tx) => {
+        const amount = Number(tx.amount || 0);
+        const isIncome = tx.transaction_type === 'income' && !(tx.category === 'AHORRO' || tx.concept?.includes('Abono a meta'));
+        // Ingresos suman, egresos y ahorros restan para dar el balance neto real
+        return isIncome ? acc + amount : acc - amount;
+      }, 0);
+    } else {
+      // Para filtros específicos, suma el total de esos movimientos
+      return filteredTransactions.reduce((acc, tx) => acc + Number(tx.amount || 0), 0);
+    }
+  }, [filteredTransactions, filter]);
 
   if (!transactions || transactions.length === 0) {
     return null;
@@ -191,7 +214,7 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
           </div>
         </div>
 
-        {/* 🌟 BARRA DE SUMA TOTAL SEGÚN EL FILTRO SELECCIONADO */}
+        {/* 🌟 BARRA DE SUMA TOTAL / BALANCE NETO */}
         <div className={`p-3 border-2 border-black rounded-2xl flex justify-between items-center text-xs font-black uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${
           filter === 'savings' ? 'bg-blue-100 text-blue-950' :
           filter === 'expense' ? 'bg-rose-100 text-rose-950' :
@@ -201,16 +224,15 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
           'bg-amber-100 text-black'
         }`}>
           <span>
-            Total ({
-              filter === 'all' ? 'General' : 
+            {filter === 'all' ? '⚖️ Balance Neto General:' : `Total (${
               filter === 'savings' ? 'Ahorros' : 
               filter === 'expense' ? 'Egresos' : 
               filter === 'income' ? 'Ingresos' :
               filter === 'retro-expense' ? 'Egresos Retroactivos' : 'Ingresos Retroactivos'
-            }):
+            }):`}
           </span>
-          <span className="text-sm font-black">
-            {formatearMoneda(totalFilteredAmount)}
+          <span className={`text-sm font-black ${filter === 'all' && totalFilteredAmount < 0 ? 'text-rose-600' : ''}`}>
+            {totalFilteredAmount < 0 ? `-${formatearMoneda(Math.abs(totalFilteredAmount))}` : formatearMoneda(totalFilteredAmount)}
           </span>
         </div>
 
