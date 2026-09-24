@@ -26,7 +26,12 @@ export async function saveTransaction({ transactionType, amount, category, conce
   }
 
   // Captura prioritaria de la fecha (si no viene, usa la fecha local exacta)
-  const finalDate = date || transaction_date || getLocalDate();
+  let finalDate = date || transaction_date || getLocalDate();
+  
+  // 🟢 Blindaje contra UTC: si es una fecha tipo "YYYY-MM-DD", fijamos el mediodía para evitar desfase de 1 día
+  if (finalDate && finalDate.length === 10 && !finalDate.includes('T')) {
+    finalDate = `${finalDate}T12:00:00`;
+  }
 
   const payload = {
     transaction_type: transactionType,
@@ -62,12 +67,19 @@ export async function updateTransactionAmount(id, updatedData) {
     throw new Error("El monto debe ser un número mayor a 0.");
   }
 
+  let rawDate = isObject ? (updatedData.date || updatedData.transaction_date) : null;
+  
+  // 🟢 Blindaje contra UTC en actualización
+  if (rawDate && rawDate.length === 10 && !rawDate.includes('T')) {
+    rawDate = `${rawDate}T12:00:00`;
+  }
+
   const payloadToUpdate = isObject ? {
     amount: numAmount,
     concept: aMayusculas(updatedData.concept),
     transaction_type: updatedData.transaction_type,
     ...(updatedData.is_retroactive !== undefined ? { is_retroactive: Boolean(updatedData.is_retroactive) } : {}),
-    ...(updatedData.date || updatedData.transaction_date ? { transaction_date: updatedData.date || updatedData.transaction_date } : {})
+    ...(rawDate ? { transaction_date: rawDate } : {})
   } : {
     amount: numAmount
   };

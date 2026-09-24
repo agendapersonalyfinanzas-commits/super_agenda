@@ -2,29 +2,32 @@ import React, { useState, useMemo } from 'react';
 import { formatearMoneda } from '../../utils/moneda.js';
 import PDFPreviewModal from './PDFPreviewModal.jsx';
 
-// 🟢 Helper seguro para mostrar fecha y hora local exacta sin desfases de UTC
+// 🟢 Helper ultra seguro para mostrar fecha y hora local exacta sin desfases de UTC
 const formatearFechaLimpia = (tx) => {
   const rawDate = tx.transaction_date || tx.created_at;
   if (!rawDate) return '';
 
-  if (typeof rawDate === 'string' && rawDate.length === 10 && rawDate.includes('-')) {
-    const [anio, mes, dia] = rawDate.split('-');
-    return `${dia}/${mes}/${anio}`;
-  }
+  // Extraemos la parte de la fecha (YYYY-MM-DD) directamente como texto para evitar el salto de zona horaria
+  const dateStr = typeof rawDate === 'string' ? rawDate.split('T')[0].split(' ')[0] : '';
 
-  const fecha = new Date(rawDate);
-  if (!isNaN(fecha)) {
-    const dia = String(fecha.getUTCDate()).padStart(2, '0');
-    const mes = String(fecha.getUTCMonth() + 1).padStart(2, '0');
-    const anio = fecha.getUTCFullYear();
+  if (dateStr && dateStr.length === 10 && dateStr.includes('-')) {
+    const [anio, mes, dia] = dateStr.split('-');
 
-    if (rawDate.includes('T') && (fecha.getHours() !== 0 || fecha.getMinutes() !== 0)) {
-      const localDia = String(fecha.getDate()).padStart(2, '0');
-      const localMes = String(fecha.getMonth() + 1).padStart(2, '0');
-      const localAnio = fecha.getFullYear();
-      const localHoras = String(fecha.getHours()).padStart(2, '0');
-      const localMinutos = String(fecha.getMinutes()).padStart(2, '0');
-      return `${localDia}/${localMes}/${localAnio} ${localHoras}:${localMinutos}`;
+    // Si además tiene hora registrada distinta de medianoche
+    if (typeof rawDate === 'string' && (rawDate.includes('T') || rawDate.includes(' '))) {
+      const fecha = new Date(rawDate);
+      if (!isNaN(fecha)) {
+        const horas = fecha.getHours();
+        const minutos = fecha.getMinutes();
+        if (horas !== 0 || minutos !== 0) {
+          const localDia = String(fecha.getDate()).padStart(2, '0');
+          const localMes = String(fecha.getMonth() + 1).padStart(2, '0');
+          const localAnio = fecha.getFullYear();
+          const localHoras = String(horas).padStart(2, '0');
+          const localMinutos = String(minutos).padStart(2, '0');
+          return `${localDia}/${localMes}/${localAnio} ${localHoras}:${localMinutos}`;
+        }
+      }
     }
 
     return `${dia}/${mes}/${anio}`;
@@ -56,7 +59,12 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
     setEditConcept(tx.concept || tx.category || '');
     setEditAmount(tx.amount.toString());
     setEditType(tx.transaction_type || 'expense');
-    setEditDate(tx.transaction_date || tx.created_at?.split('T')[0] || new Date().toISOString().split('T')[0]);
+    
+    // Extraemos limpiamente la fecha YYYY-MM-DD para el input de fecha
+    const rawDate = tx.transaction_date || tx.created_at;
+    const cleanDateStr = rawDate ? rawDate.split('T')[0].split(' ')[0] : new Date().toISOString().split('T')[0];
+    setEditDate(cleanDateStr);
+
     setEditRetroactive(Boolean(tx.is_retroactive));
     setEditModalOpen(true);
   };
@@ -66,11 +74,14 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
     const parsedAmount = Number(editAmount);
     
     if (!isNaN(parsedAmount) && parsedAmount > 0 && onUpdate && editTx) {
+      // 🟢 Blindamos la fecha con T12:00:00 para que UTC nunca la devuelva al día anterior
+      const safeTransactionDate = editDate.includes('T') ? editDate : `${editDate}T12:00:00`;
+
       onUpdate(editTx.id, {
         amount: parsedAmount,
         concept: editConcept.toUpperCase(),
         transaction_type: editType,
-        transaction_date: editDate,
+        transaction_date: safeTransactionDate,
         is_retroactive: editRetroactive
       });
     }
