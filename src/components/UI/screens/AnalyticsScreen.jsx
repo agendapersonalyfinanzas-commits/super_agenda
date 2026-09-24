@@ -13,6 +13,7 @@ export default function AnalyticsScreen() {
   const [weeklyData, setWeeklyData] = useState([]);
   const [categoryData, setCategoryData] = useState([]);
   const [errorMessage, setErrorMessage] = useState('');
+  const [isChartExpanded, setIsChartExpanded] = useState(false);
 
   useEffect(() => {
     fetchAnalyticsData();
@@ -91,13 +92,12 @@ export default function AnalyticsScreen() {
     setCategoryData(sortedCategories);
   };
 
-  // 📅 Generar información de Mes y Rango de la Semana actual
   const getWeekOrientationInfo = () => {
     const today = new Date();
     const start = new Date(today);
-    start.setDate(today.getDate() - today.getDay()); // Domingo
+    start.setDate(today.getDate() - today.getDay());
     const end = new Date(start);
-    end.setDate(end.getDate() + 6); // Sábado
+    end.setDate(end.getDate() + 6);
 
     const options = { day: 'numeric', month: 'short' };
     const startStr = start.toLocaleDateString('es-ES', options);
@@ -136,19 +136,59 @@ export default function AnalyticsScreen() {
 
   const totalExpensesSum = categoryData.reduce((acc, curr) => acc + curr.value, 0);
 
+  const handlePrintOrPDF = () => {
+    window.print();
+  };
+
   return (
     <div className="min-h-screen bg-[#Fef8e7] p-3 sm:p-6 md:p-8 font-mono text-black pb-24 select-none">
+      
+      {/* ESTILOS CSS OPTIMIZADOS PARA QUE TODO ENTRE EN 1 SOLA PÁGINA */}
+      <style dangerouslySetInnerHTML={{__html: `
+        @media print {
+          body, html {
+            background-color: #Fef8e7 !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+            height: 100% !important;
+            overflow: hidden !important;
+          }
+          /* Ocultar elementos de navegación flotante o global de la app */
+          nav, footer, .fixed, button, [class*="fixed"] {
+            display: none !important;
+          }
+          /* Escala exacta ajustada a 1 sola página vertical */
+          .max-w-4xl {
+            max-width: 100% !important;
+            margin: 0 auto !important;
+            padding: 0 !important;
+            transform: scale(0.66);
+            transform-origin: top center;
+          }
+        }
+      `}} />
+
       <div className="max-w-4xl mx-auto space-y-6">
         
-        {/* CABECERA ESTILO CÓMIC */}
-        <header className="flex items-center gap-4 border-4 border-black bg-white p-4 sm:p-6 rounded-3xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-          <div className="w-12 h-12 sm:w-14 sm:h-14 bg-amber-400 border-2 border-black rounded-full flex items-center justify-center shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-xl sm:text-2xl shrink-0">
-            📊
+        {/* CABECERA ESTILO CÓMIC CON BOTÓN IMPRIMIR / PDF */}
+        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-4 border-black bg-white p-4 sm:p-6 rounded-3xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] print:shadow-none print:border-2">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 sm:w-14 sm:h-14 bg-amber-400 border-2 border-black rounded-full flex items-center justify-center shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-xl sm:text-2xl shrink-0">
+              📊
+            </div>
+            <div>
+              <h1 className="text-lg sm:text-xl font-black uppercase tracking-tight text-black">Métricas Financieras</h1>
+              <p className="text-[11px] sm:text-xs font-bold text-stone-600 uppercase tracking-tight">Balance general, ingresos vs egresos y distribución</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-lg sm:text-xl font-black uppercase tracking-tight text-black">Métricas Financieras</h1>
-            <p className="text-[11px] sm:text-xs font-bold text-stone-600 uppercase tracking-tight">Balance general, ingresos vs egresos y distribución</p>
-          </div>
+
+          <button
+            type="button"
+            onClick={handlePrintOrPDF}
+            className="print:hidden bg-amber-400 border-2 border-black px-4 py-2 rounded-2xl text-xs font-black uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:bg-amber-300 transition-all cursor-pointer flex items-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
+          >
+            <span>🖨️ Imprimir / Guardar PDF</span>
+          </button>
         </header>
 
         {/* ALERTA DE ERROR */}
@@ -177,7 +217,7 @@ export default function AnalyticsScreen() {
         </div>
 
         {/* SELECTOR DE PESTAÑAS */}
-        <div className="flex flex-wrap gap-2 border-4 border-black bg-white p-2 rounded-2xl w-full sm:w-fit shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+        <div className="print:hidden flex flex-wrap gap-2 border-4 border-black bg-white p-2 rounded-2xl w-full sm:w-fit shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
           <button 
             type="button"
             onClick={() => setActiveTab('weekly')} 
@@ -213,20 +253,33 @@ export default function AnalyticsScreen() {
             {activeTab === 'weekly' && (
               <div className="border-4 border-black bg-white p-4 sm:p-6 rounded-3xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-6 overflow-hidden">
                 
-                {/* CABECERA CON MES Y SEMANA PARA ORIENTACIÓN */}
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b-2 border-stone-200 pb-3 gap-2">
+                {/* CABECERA CON MES, SEMANA Y BOTÓN DE MAXIMIZAR */}
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b-2 border-stone-200 pb-3 gap-3">
                   <div>
                     <h3 className="font-black text-xs uppercase tracking-wider text-black">📅 Comportamiento Semanal</h3>
                     <p className="text-[10px] font-black text-amber-600 uppercase mt-0.5">
                       {weekInfo.monthYear} • {weekInfo.range}
                     </p>
                   </div>
+                  
+                  <div className="print:hidden flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsChartExpanded(true)}
+                      className="bg-amber-400 border-2 border-black px-3 py-1.5 rounded-xl text-[10px] font-black uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-amber-300 transition-all cursor-pointer flex items-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5"
+                    >
+                      <span>🔍 Maximizar Gráfica</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
                   <span className="text-[9px] font-black uppercase bg-stone-100 border-2 border-black px-2 py-1 rounded-xl">
                     Verde: Ingresos | Rojo: Egresos | Azul: Sin Movimientos
                   </span>
                 </div>
                 
-                {/* CONTENEDOR CON SCROLL HORIZONTAL CONTROLADO (SEGURO CONTRA DESBORDAMIENTO) */}
+                {/* CONTENEDOR CON SCROLL HORIZONTAL CONTROLADO */}
                 <div className="w-full overflow-x-auto pb-2">
                   <div className="h-72 min-w-112.5 w-full flex items-end justify-between gap-3 pt-4 border-b-4 border-black px-2 bg-stone-50 rounded-2xl border-2">
                     {weeklyData.map(day => {
@@ -471,6 +524,114 @@ export default function AnalyticsScreen() {
         )}
 
       </div>
+
+      {/* MODAL DE GRÁFICA MAXIMIZADA A PANTALLA COMPLETA */}
+      {isChartExpanded && (
+        <div className="fixed inset-0 z-50 bg-[#Fef8e7]/95 backdrop-blur-sm p-3 sm:p-6 flex flex-col justify-center items-center overflow-auto animate-fade-in">
+          <div className="w-full max-w-5xl bg-white border-4 border-black p-4 sm:p-8 rounded-3xl shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] space-y-6 my-auto">
+            
+            {/* CABECERA DEL MODAL */}
+            <div className="flex justify-between items-center border-b-4 border-black pb-4">
+              <div>
+                <h3 className="font-black text-sm sm:text-lg uppercase tracking-wider text-black">📈 Gráfica Semanal (Vista Ampliada)</h3>
+                <p className="text-xs font-black text-amber-600 uppercase mt-0.5">
+                  {weekInfo.monthYear} • {weekInfo.range}
+                </p>
+              </div>
+              
+              <button
+                type="button"
+                onClick={() => setIsChartExpanded(false)}
+                className="bg-rose-500 text-white border-3 border-black px-4 py-2 rounded-2xl text-xs font-black uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:bg-rose-400 transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+              >
+                ✕ Cerrar
+              </button>
+            </div>
+
+            <div className="text-[10px] sm:text-xs font-black uppercase bg-stone-100 border-2 border-black p-2 rounded-xl text-center">
+              💡 Gira tu celular en horizontal para disfrutar de una visualización aún más amplia de las barras.
+            </div>
+
+            {/* GRÁFICA GIGANTE EN EL MODAL */}
+            <div className="w-full overflow-x-auto pb-4">
+              <div className="h-96 min-w-150 w-full flex items-end justify-between gap-4 pt-6 border-b-4 border-black px-4 bg-stone-50 rounded-3xl border-3 shadow-inner">
+                {weeklyData.map(day => {
+                  const incomeHeight = (day.income / maxWeeklyValue) * 100;
+                  const expenseHeight = (day.expense / maxWeeklyValue) * 100;
+                  const netDaySum = day.income - day.expense;
+                  const totalMovement = day.income + day.expense;
+
+                  return (
+                    <div key={day.name} className="flex-1 min-w-16 flex flex-col items-center justify-end h-full">
+                      
+                      {/* MONTOS SOBRE LAS BARRAS */}
+                      <div className="flex flex-col items-center text-[10px] sm:text-xs font-black uppercase mb-2 space-y-1">
+                        {day.income > 0 && (
+                          <span className="text-black bg-emerald-300 px-1.5 py-0.5 rounded-md border-2 border-black whitespace-nowrap shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                            +{formatearMoneda(day.income)}
+                          </span>
+                        )}
+                        {day.expense > 0 && (
+                          <span className="text-white bg-rose-600 px-1.5 py-0.5 rounded-md border-2 border-black whitespace-nowrap shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                            -{formatearMoneda(day.expense)}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* BARRAS AMPLIADAS */}
+                      <div className="w-full flex justify-center items-end gap-2 flex-1 py-1">
+                        {totalMovement === 0 ? (
+                          <div 
+                            style={{ height: '32px' }} 
+                            className="w-full bg-[#38bdf8] border-3 border-black rounded-t-xl transition-all duration-500"
+                          />
+                        ) : (
+                          <>
+                            <div 
+                              style={{ height: `${Math.max(10, incomeHeight)}%` }} 
+                              className="w-1/2 bg-emerald-400 border-3 border-black rounded-t-xl transition-all duration-500 shadow-md"
+                            />
+                            <div 
+                              style={{ height: `${Math.max(10, expenseHeight)}%` }} 
+                              className="w-1/2 bg-rose-500 border-3 border-black rounded-t-xl transition-all duration-500 shadow-md"
+                            />
+                          </>
+                        )}
+                      </div>
+
+                      {/* ETIQUETA DE DÍA Y SUMA NETA */}
+                      <div className="flex flex-col items-center pt-3 mt-2 border-t-3 border-black w-full text-center">
+                        <span className="font-black text-xs sm:text-sm text-black uppercase">{day.name}</span>
+                        <span className={`text-[10px] sm:text-xs font-black uppercase whitespace-nowrap ${netDaySum >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                          {netDaySum >= 0 ? formatearMoneda(netDaySum) : `-${formatearMoneda(Math.abs(netDaySum))}`}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* LEYENDA */}
+            <div className="flex flex-wrap gap-6 justify-center text-xs sm:text-sm font-black text-black uppercase pt-2">
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 bg-emerald-400 border-2 border-black rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" />
+                <span>Ingresos</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 bg-rose-500 border-2 border-black rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" />
+                <span>Egresos</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 bg-[#38bdf8] border-2 border-black rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" />
+                <span>Sin Movimientos</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
