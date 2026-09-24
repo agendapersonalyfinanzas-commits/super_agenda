@@ -211,7 +211,7 @@ export default function AnalyticsScreen() {
           <>
             {/* 2. GRÁFICA DE BARRAS Y TARJETAS DIARIAS */}
             {activeTab === 'weekly' && (
-              <div className="border-4 border-black bg-white p-4 sm:p-6 rounded-3xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-6">
+              <div className="border-4 border-black bg-white p-4 sm:p-6 rounded-3xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-6 overflow-hidden">
                 
                 {/* CABECERA CON MES Y SEMANA PARA ORIENTACIÓN */}
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b-2 border-stone-200 pb-3 gap-2">
@@ -226,9 +226,9 @@ export default function AnalyticsScreen() {
                   </span>
                 </div>
                 
-                {/* CONTENEDOR CON SCROLL HORIZONTAL PARA LA GRÁFICA */}
-                <div className="overflow-x-auto pb-2">
-                  <div className="h-72 min-w-85 flex items-end justify-between gap-3 pt-4 border-b-4 border-black px-2 bg-stone-50 rounded-2xl border-2">
+                {/* CONTENEDOR CON SCROLL HORIZONTAL CONTROLADO (SEGURO CONTRA DESBORDAMIENTO) */}
+                <div className="w-full overflow-x-auto pb-2">
+                  <div className="h-72 min-w-112.5 w-full flex items-end justify-between gap-3 pt-4 border-b-4 border-black px-2 bg-stone-50 rounded-2xl border-2">
                     {weeklyData.map(day => {
                       const incomeHeight = (day.income / maxWeeklyValue) * 100;
                       const expenseHeight = (day.expense / maxWeeklyValue) * 100;
