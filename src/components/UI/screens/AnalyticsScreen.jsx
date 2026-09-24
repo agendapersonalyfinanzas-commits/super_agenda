@@ -14,6 +14,10 @@ export default function AnalyticsScreen() {
   const [categoryData, setCategoryData] = useState([]);
   const [errorMessage, setErrorMessage] = useState('');
   const [isChartExpanded, setIsChartExpanded] = useState(false);
+  
+  // Estados para el modal de Vista Previa PDF con Zoom
+  const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+  const [pdfZoom, setPdfZoom] = useState(1); // 1 = 100%
 
   useEffect(() => {
     fetchAnalyticsData();
@@ -140,10 +144,14 @@ export default function AnalyticsScreen() {
     window.print();
   };
 
+  const handlePdfZoomIn = () => setPdfZoom(prev => Math.min(prev + 0.15, 1.6));
+  const handlePdfZoomOut = () => setPdfZoom(prev => Math.max(prev - 0.15, 0.5));
+  const handlePdfResetZoom = () => setPdfZoom(1);
+
   return (
     <div className="min-h-screen bg-[#Fef8e7] p-3 sm:p-6 md:p-8 font-mono text-black pb-24 select-none">
       
-      {/* ESTILOS CSS OPTIMIZADOS PARA QUE TODO ENTRE EN 1 SOLA PÁGINA */}
+      {/* ESTILOS CSS OPTIMIZADOS PARA IMPRESIÓN */}
       <style dangerouslySetInnerHTML={{__html: `
         @media print {
           body, html {
@@ -153,16 +161,14 @@ export default function AnalyticsScreen() {
             height: 100% !important;
             overflow: hidden !important;
           }
-          /* Ocultar elementos de navegación flotante o global de la app */
           nav, footer, .fixed, button, [class*="fixed"] {
             display: none !important;
           }
-          /* Escala exacta ajustada a 1 sola página vertical */
           .max-w-4xl {
             max-width: 100% !important;
             margin: 0 auto !important;
             padding: 0 !important;
-            transform: scale(0.66);
+            transform: scale(0.66) !important;
             transform-origin: top center;
           }
         }
@@ -170,7 +176,7 @@ export default function AnalyticsScreen() {
 
       <div className="max-w-4xl mx-auto space-y-6">
         
-        {/* CABECERA ESTILO CÓMIC CON BOTÓN IMPRIMIR / PDF */}
+        {/* CABECERA ESTILO CÓMIC CON BOTÓN PDF */}
         <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-4 border-black bg-white p-4 sm:p-6 rounded-3xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] print:shadow-none print:border-2">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 sm:w-14 sm:h-14 bg-amber-400 border-2 border-black rounded-full flex items-center justify-center shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-xl sm:text-2xl shrink-0">
@@ -184,10 +190,10 @@ export default function AnalyticsScreen() {
 
           <button
             type="button"
-            onClick={handlePrintOrPDF}
-            className="print:hidden bg-amber-400 border-2 border-black px-4 py-2 rounded-2xl text-xs font-black uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:bg-amber-300 transition-all cursor-pointer flex items-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
+            onClick={() => setIsPdfModalOpen(true)}
+            className="print:hidden bg-amber-400 border-3 border-black px-4 py-2.5 rounded-2xl text-xs font-black uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:bg-amber-300 transition-all cursor-pointer flex items-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
           >
-            <span>🖨️ Imprimir / Guardar PDF</span>
+            <span>🔍 📥 PDF</span>
           </button>
         </header>
 
@@ -548,11 +554,7 @@ export default function AnalyticsScreen() {
               </button>
             </div>
 
-            <div className="text-[10px] sm:text-xs font-black uppercase bg-stone-100 border-2 border-black p-2 rounded-xl text-center">
-              💡 Gira tu celular en horizontal para disfrutar de una visualización aún más amplia de las barras.
-            </div>
-
-            {/* GRÁFICA GIGANTE EN EL MODAL */}
+            {/* GRÁFICA GIGANTE EN EL MODAL CON SCROLL HORIZONTAL FLUIDO */}
             <div className="w-full overflow-x-auto pb-4">
               <div className="h-96 min-w-150 w-full flex items-end justify-between gap-4 pt-6 border-b-4 border-black px-4 bg-stone-50 rounded-3xl border-3 shadow-inner">
                 {weeklyData.map(day => {
@@ -625,6 +627,272 @@ export default function AnalyticsScreen() {
               <div className="flex items-center gap-2">
                 <div className="w-4 h-4 bg-[#38bdf8] border-2 border-black rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" />
                 <span>Sin Movimientos</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE VISTA PREVIA PDF CON ZOOM QUE MUESTRA TODA LA PÁGINA Y LA GRÁFICA DE BARRAS */}
+      {isPdfModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm p-2 sm:p-6 flex flex-col justify-center items-center overflow-auto animate-fade-in">
+          <div className="w-full max-w-5xl bg-[#Fef8e7] border-4 border-black rounded-3xl shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] flex flex-col max-h-[92vh] overflow-hidden my-auto">
+            
+            {/* BARRA SUPERIOR DE ZOOM ESTILO CÓMIC */}
+            <div className="bg-amber-400 border-b-4 border-black p-3 sm:p-4 flex flex-wrap justify-between items-center gap-3 shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="text-base">🔍</span>
+                <h3 className="font-black text-xs sm:text-sm uppercase tracking-wider text-black">
+                  VISTA PREVIA ZOOM [{Math.round(pdfZoom * 100)}%]
+                </h3>
+              </div>
+
+              {/* CONTROLES DE ZOOM Y CIERRE */}
+              <div className="flex items-center gap-3">
+                <div className="flex items-center bg-white border-2 border-black rounded-xl p-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                  <button
+                    type="button"
+                    onClick={handlePdfZoomOut}
+                    className="w-8 h-8 font-black hover:bg-stone-100 rounded-lg cursor-pointer flex items-center justify-center active:translate-x-0.5 active:translate-y-0.5"
+                  >
+                    -
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handlePdfResetZoom}
+                    className="px-2.5 text-xs font-black hover:bg-stone-100 cursor-pointer"
+                  >
+                    {Math.round(pdfZoom * 100)}%
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handlePdfZoomIn}
+                    className="w-8 h-8 font-black hover:bg-stone-100 rounded-lg cursor-pointer flex items-center justify-center active:translate-x-0.5 active:translate-y-0.5"
+                  >
+                    +
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handlePrintOrPDF}
+                  className="bg-emerald-400 border-2 border-black px-3 py-1.5 rounded-xl text-xs font-black uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-emerald-300 transition-all cursor-pointer flex items-center gap-1 active:translate-x-0.5 active:translate-y-0.5"
+                >
+                  <span>🖨️ IMPRIMIR</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsPdfModalOpen(false)}
+                  className="bg-rose-500 text-white border-2 border-black w-9 h-9 rounded-xl font-black flex items-center justify-center shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-rose-400 cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* CONTENEDOR DE LA HOJA DE PAPEL QUE CONTIENE TODA LA PÁGINA CON ZOOM Y GRÁFICA DE BARRAS */}
+            <div className="flex-1 overflow-auto p-4 sm:p-8 bg-stone-200/80 flex justify-center">
+              <div 
+                style={{ transform: `scale(${pdfZoom})`, transformOrigin: 'top center' }} 
+                className="bg-[#Fef8e7] border-4 border-black p-4 sm:p-8 rounded-3xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] w-full max-w-4xl space-y-6 transition-transform duration-200"
+              >
+                
+                {/* 1. RESUMEN EJECUTIVO GENERAL DENTRO DEL MODAL */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="border-4 border-black bg-emerald-100 p-4 rounded-3xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] space-y-1">
+                    <p className="text-[10px] font-black uppercase text-emerald-800">🟢 Ingresos Totales</p>
+                    <p className="text-base font-black text-emerald-950">{formatearMoneda(totalIncome)}</p>
+                  </div>
+                  <div className="border-4 border-black bg-rose-100 p-4 rounded-3xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] space-y-1">
+                    <p className="text-[10px] font-black uppercase text-rose-800">🔴 Egresos Totales</p>
+                    <p className="text-base font-black text-rose-950">{formatearMoneda(totalExpenses)}</p>
+                  </div>
+                  <div className={`border-4 border-black p-4 rounded-3xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] space-y-1 ${netBalance >= 0 ? 'bg-amber-200' : 'bg-orange-200'}`}>
+                    <p className="text-[10px] font-black uppercase text-stone-800">⚖️ Flujo Neto (Disponible)</p>
+                    <p className={`text-base font-black ${netBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                      {formatearMoneda(netBalance)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* 2. GRÁFICA DE BARRAS SEMANAL DENTRO DEL MODAL */}
+                <div className="border-4 border-black bg-white p-4 sm:p-6 rounded-3xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-4">
+                  <div className="flex justify-between items-center border-b-2 border-stone-200 pb-3">
+                    <div>
+                      <h3 className="font-black text-xs uppercase tracking-wider text-black">📅 Comportamiento Semanal</h3>
+                      <p className="text-[10px] font-black text-amber-600 uppercase mt-0.5">
+                        {weekInfo.monthYear} • {weekInfo.range}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="w-full overflow-x-auto pb-2">
+                    <div className="h-64 min-w-100 w-full flex items-end justify-between gap-3 pt-4 border-b-4 border-black px-2 bg-stone-50 rounded-2xl border-2">
+                      {weeklyData.map(day => {
+                        const incomeHeight = (day.income / maxWeeklyValue) * 100;
+                        const expenseHeight = (day.expense / maxWeeklyValue) * 100;
+                        const netDaySum = day.income - day.expense;
+                        const totalMovement = day.income + day.expense;
+
+                        return (
+                          <div key={day.name} className="flex-1 min-w-10 flex flex-col items-center justify-end h-full">
+                            <div className="flex flex-col items-center text-[7px] font-black uppercase mb-1 space-y-0.5">
+                              {day.income > 0 && (
+                                <span className="text-black bg-emerald-300 px-1 rounded border border-black/40 whitespace-nowrap">
+                                  +{formatearMoneda(day.income)}
+                                </span>
+                              )}
+                              {day.expense > 0 && (
+                                <span className="text-rose-600 bg-rose-100 px-1 rounded border border-black/40 whitespace-nowrap">
+                                  -{formatearMoneda(day.expense)}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="w-full flex justify-center items-end gap-1 flex-1 py-1">
+                              {totalMovement === 0 ? (
+                                <div style={{ height: '20px' }} className="w-full bg-[#38bdf8] border-2 border-black rounded-t-md" />
+                              ) : (
+                                <>
+                                  <div style={{ height: `${Math.max(8, incomeHeight)}%` }} className="w-1/2 bg-emerald-400 border-2 border-black rounded-t-md" />
+                                  <div style={{ height: `${Math.max(8, expenseHeight)}%` }} className="w-1/2 bg-rose-500 border-2 border-black rounded-t-md" />
+                                </>
+                              )}
+                            </div>
+
+                            <div className="flex flex-col items-center pt-2 mt-1 border-t-2 border-black w-full text-center">
+                              <span className="font-black text-[9px] text-black uppercase">{day.name}</span>
+                              <span className={`text-[7px] font-black uppercase whitespace-nowrap ${netDaySum >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                                {netDaySum >= 0 ? formatearMoneda(netDaySum) : `-${formatearMoneda(Math.abs(netDaySum))}`}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. DESGLOSE DIARIO E INDICADOR CIRCULAR DENTRO DEL MODAL */}
+                <div className="border-4 border-black bg-white p-4 sm:p-6 rounded-3xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-4">
+                  <div className="flex justify-between items-center border-b-2 border-stone-200 pb-3">
+                    <h4 className="text-xs font-black uppercase text-stone-800">📌 Desglose Diario e Indicador Circular</h4>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {weeklyData.map(day => {
+                      const netDay = day.income - day.expense;
+                      const totalMovement = day.income + day.expense;
+                      const radius = 18;
+                      const circumference = 2 * Math.PI * radius;
+                      const incomeRatio = totalMovement > 0 ? day.income / totalMovement : 0;
+                      const incomeStroke = incomeRatio * circumference;
+
+                      return (
+                        <div key={day.name} className="border-3 border-black bg-stone-50 p-3 rounded-2xl shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] flex items-center justify-between gap-2">
+                          <div className="space-y-1">
+                            <span className="bg-amber-400 text-black border border-black px-2 py-0.5 rounded-md text-[10px] font-black inline-block">
+                              {day.name}
+                            </span>
+                            <div className="text-[10px] font-black space-y-0.5">
+                              <p className="text-emerald-700">🟢 +{formatearMoneda(day.income)}</p>
+                              <p className="text-rose-600">🔴 -{formatearMoneda(day.expense)}</p>
+                              <p className="text-black pt-1 border-t border-stone-300">
+                                Neto: <span className={netDay >= 0 ? 'text-emerald-700' : 'text-rose-600'}>{formatearMoneda(netDay)}</span>
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col items-center shrink-0">
+                            <div className="w-14 h-14 rounded-full border-2 border-black overflow-hidden flex items-center justify-center bg-white relative">
+                              <svg className="w-14 h-14 transform -rotate-90" viewBox="0 0 36 36">
+                                <circle 
+                                  cx="18" 
+                                  cy="18" 
+                                  r={radius} 
+                                  fill={totalMovement > 0 ? "#f43f5e" : "#38bdf8"} 
+                                />
+                                {totalMovement > 0 && (
+                                  <circle 
+                                    cx="18" 
+                                    cy="18" 
+                                    r={radius} 
+                                    fill="transparent" 
+                                    stroke="#34d399" 
+                                    strokeWidth="36" 
+                                    strokeDasharray={`${incomeStroke} ${circumference}`} 
+                                  />
+                                )}
+                              </svg>
+                              <div className="absolute inset-0 flex items-center justify-center text-[10px] font-black text-black">
+                                {totalMovement > 0 ? `${Math.round(incomeRatio * 100)}%` : '0%'}
+                              </div>
+                            </div>
+                            <span className="text-[7px] font-black text-stone-600 uppercase mt-1">Ingreso %</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* TARJETA FINAL EN EL MODAL */}
+                    {(() => {
+                      const totalWeeklyMovement = weeklyIncomeSum + weeklyExpenseSum;
+                      const weeklyRadius = 18;
+                      const weeklyCircumference = 2 * Math.PI * weeklyRadius;
+                      const weeklyIncomeRatio = totalWeeklyMovement > 0 ? weeklyIncomeSum / totalWeeklyMovement : 0;
+                      const weeklyIncomeStroke = weeklyIncomeRatio * weeklyCircumference;
+
+                      return (
+                        <div className="border-3 border-black bg-amber-300 p-3 rounded-2xl shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] flex items-center justify-between gap-2">
+                          <div className="space-y-1">
+                            <span className="bg-black text-amber-300 border border-black px-2 py-0.5 rounded-md text-[9px] font-black uppercase inline-block">
+                              🏆 {weekInfo.range}
+                            </span>
+                            <div className="text-[10px] font-black space-y-0.5 pt-1">
+                              <p className="text-emerald-900">🟢 Ingresos: {formatearMoneda(weeklyIncomeSum)}</p>
+                              <p className="text-rose-900">🔴 Egresos: {formatearMoneda(weeklyExpenseSum)}</p>
+                              <p className="text-black pt-1 border-t border-black/30">
+                                Neto: <span className={weeklyNetBalance >= 0 ? 'text-emerald-900' : 'text-rose-900'}>{formatearMoneda(weeklyNetBalance)}</span>
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col items-center shrink-0">
+                            <div className="w-14 h-14 rounded-full border-2 border-black overflow-hidden flex items-center justify-center bg-white relative">
+                              <svg className="w-14 h-14 transform -rotate-90" viewBox="0 0 36 36">
+                                <circle 
+                                  cx="18" 
+                                  cy="18" 
+                                  r={weeklyRadius} 
+                                  fill={totalWeeklyMovement > 0 ? "#f43f5e" : "#38bdf8"} 
+                                />
+                                {totalWeeklyMovement > 0 && (
+                                  <circle 
+                                    cx="18" 
+                                    cy="18" 
+                                    r={weeklyRadius} 
+                                    fill="transparent" 
+                                    stroke="#34d399" 
+                                    strokeWidth="36" 
+                                    strokeDasharray={`${weeklyIncomeStroke} ${weeklyCircumference}`} 
+                                  />
+                                )}
+                              </svg>
+                              <div className="absolute inset-0 flex items-center justify-center text-[10px] font-black text-black">
+                                {totalWeeklyMovement > 0 ? `${Math.round(weeklyIncomeRatio * 100)}%` : '0%'}
+                              </div>
+                            </div>
+                            <span className="text-[7px] font-black text-stone-800 uppercase mt-1">Ingreso %</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                  </div>
+                </div>
+
               </div>
             </div>
 

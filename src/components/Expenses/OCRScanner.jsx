@@ -1,41 +1,22 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { scanTicketOCR } from '../../services/ocrService';
 
-// Importación de utilidades con extensión .js para Vite
-import { aNumero, formatearMoneda } from '../../utils/moneda.js';
-import { aMayusculas } from '../../utils/mayusculas.js';
-import { obtenerMensajeError } from '../../utils/errores.js';
-
-export default function OCRScanner({ onScanSuccess, onClose }) {
+export default function OCRScanner({ onClose, onScanSuccess }) {
   const [loading, setLoading] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
-  const fileInputRef = useRef(null);
+  const [selectedFile, setSelectedFile] = useState(null);
 
   const handleFileChange = (e) => {
-    const files = e.target.files;
-    if (files && files.length > 0) {
-      const selectedFile = files[0];
+    const file = e.target.files[0];
+    if (file) {
+      setSelectedFile(file);
       setErrorMsg('');
-      
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-      }
-      
-      setPreviewUrl(URL.createObjectURL(selectedFile));
     }
   };
 
-  const handleTriggerInput = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.click();
-    }
-  };
-
-  const handleProcessScan = async () => {
-    const files = fileInputRef.current?.files;
-    if (!files || files.length === 0) {
-      setErrorMsg(aMayusculas('Por favor selecciona o toma una foto primero'));
+  const handleProcess = async () => {
+    if (!selectedFile) {
+      setErrorMsg('Por favor selecciona o toma una foto primero.');
       return;
     }
 
@@ -43,98 +24,67 @@ export default function OCRScanner({ onScanSuccess, onClose }) {
     setErrorMsg('');
 
     try {
-      const targetFile = files[0];
-      const rawResult = await scanTicketOCR(targetFile);
-
-      // Limpieza utilitaria de los datos detectados por el OCR
-      const sanitizedResult = {
-        ...rawResult,
-        amount: aNumero(rawResult?.amount),
-        concept: aMayusculas(rawResult?.concept || rawResult?.vendor || 'COMPRA CON TICKET'),
-        category: aMayusculas(rawResult?.category || 'MERCADO')
-      };
-
-      onScanSuccess(sanitizedResult);
+      const result = await scanTicketOCR(selectedFile);
+      if (onScanSuccess) {
+        onScanSuccess(result);
+      }
     } catch (err) {
-      setErrorMsg(obtenerMensajeError(err));
+      console.error(err);
+      setErrorMsg(err.message || 'Error al procesar el ticket.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center p-4 font-mono tracking-tight text-black select-none">
-      <div className="w-full max-w-md bg-white border-4 border-black rounded-3xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] overflow-hidden">
-        
-        {/* CABECERA */}
-        <div className="p-4 bg-amber-400 border-b-4 border-black flex justify-between items-center">
-          <div>
-            <h3 className="font-black text-lg uppercase tracking-wide">Escanear Ticket</h3>
-            <p className="text-xs font-bold text-amber-950 uppercase">Detector Inteligente OCR</p>
-          </div>
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 font-mono">
+      <div className="bg-[#Fef8e7] border-4 border-black p-6 rounded-3xl max-w-md w-full shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] text-black">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-lg font-black uppercase">📸 Escanear Ticket</h2>
           <button 
             type="button"
-            onClick={onClose} 
-            disabled={loading} 
-            className="text-black font-black text-xl hover:scale-110 active:scale-95 transition-transform disabled:opacity-50 cursor-pointer"
+            onClick={onClose}
+            className="w-8 h-8 bg-rose-500 text-white border-2 border-black rounded-xl font-black flex items-center justify-center cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
           >
             ✕
           </button>
         </div>
 
-        {/* CONTENIDO PRINCIPAL */}
-        <div className="p-6 bg-white space-y-6">
-          <input
-            type="file"
-            accept="image/*"
-            capture="environment"
-            ref={fileInputRef}
-            onChange={handleFileChange}
-            className="hidden"
-          />
+        {errorMsg && (
+          <div className="mb-4 bg-rose-200 border-2 border-black p-2 rounded-xl text-xs font-bold text-rose-900">
+            ⚠️ {errorMsg}
+          </div>
+        )}
 
-          {!previewUrl ? (
-            <button
-              type="button"
-              onClick={handleTriggerInput}
-              className="w-full h-48 border-4 border-dashed border-black rounded-2xl flex flex-col items-center justify-center bg-stone-50 hover:bg-stone-100 transition-colors cursor-pointer"
-            >
-              <span className="text-3xl mb-2">📸</span>
-              <span className="font-black text-xs uppercase tracking-wider">Abrir Cámara / Subir Foto</span>
-            </button>
-          ) : (
-            <div className="space-y-4">
-              <div className="w-full h-48 border-4 border-black rounded-2xl overflow-hidden bg-black flex items-center justify-center relative">
-                <img src={previewUrl} alt="Preview" className="w-full h-full object-contain" />
-                {!loading && (
-                  <button
-                    type="button"
-                    onClick={handleTriggerInput}
-                    className="absolute bottom-2 right-2 bg-white border-2 border-black px-3 py-1 rounded-xl font-black text-xs uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none cursor-pointer"
-                  >
-                    Cambiar
-                  </button>
-                )}
-              </div>
+        <div className="space-y-4 text-center">
+          <label className="block w-full py-4 px-4 bg-amber-400 border-4 border-black rounded-2xl font-black text-sm uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:bg-amber-300 active:translate-x-0.5 active:translate-y-0.5 transition-all">
+            {selectedFile ? '📁 Cambiar Imagen' : '📷 Tomar Foto / Subir Ticket'}
+            <input 
+              type="file" 
+              accept="image/*" 
+              capture="environment" 
+              onChange={handleFileChange} 
+              className="hidden" 
+            />
+          </label>
 
-              {errorMsg && (
-                <div className="border-4 border-red-500 bg-red-50 text-red-700 p-3 rounded-xl font-black text-xs uppercase tracking-wide">
-                  ⚠️ {errorMsg}
-                </div>
-              )}
-
-              <button
-                type="button"
-                onClick={handleProcessScan}
-                disabled={loading}
-                className="w-full py-4 bg-amber-400 border-4 border-black rounded-xl font-black text-lg uppercase tracking-wider shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all disabled:opacity-50 text-black flex items-center justify-center gap-2 hover:bg-amber-300 cursor-pointer"
-              >
-                {loading ? 'PROCESANDO TEXTO...' : 'ANALIZAR TOTAL DEL TICKET'}
-              </button>
-            </div>
+          {selectedFile && (
+            <p className="text-xs font-bold text-stone-700 truncate">
+              Archivo listo: {selectedFile.name}
+            </p>
           )}
-        </div>
 
+          <button
+            type="button"
+            disabled={loading || !selectedFile}
+            onClick={handleProcess}
+            className={`w-full py-3 border-4 border-black rounded-2xl font-black text-sm uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all ${
+              loading || !selectedFile ? 'bg-stone-300 text-stone-500 cursor-not-allowed' : 'bg-emerald-400 text-black hover:bg-emerald-300 cursor-pointer active:translate-x-0.5 active:translate-y-0.5'
+            }`}
+          >
+            {loading ? '🤖 Analizando con IA...' : '✨ Analizar Total del Ticket'}
+          </button>
+        </div>
       </div>
     </div>
   );

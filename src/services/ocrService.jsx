@@ -1,75 +1,97 @@
-import { createWorker } from 'tesseract.js'
+import { GoogleGenAI } from '@google/genai';
 
-/**
- * Procesa la imagen física de un ticket utilizando Tesseract.js
- * Extrae el texto y busca de forma inteligente el monto total mediante patrones numéricos.
- * @param {File} file - El archivo de imagen seleccionado por el usuario.
- * @returns {Promise<{ amount: number, rawText: string }>}
- */
-export const scanTicketOCR = async (file) => {
-  if (!file) {
-    throw new Error('No se proporcionó ningún archivo de imagen para el escaneo.')
-  }
+const fileToGenerativePart = async (file) => {
+  return new Promise((resolve, reject) => {
+    const maxWidth = 1024;
+    const maxHeight = 1024;
+    const reader = new FileReader();
 
-  // Creamos el hilo de ejecución para el reconocimiento óptico
-  const worker = await createWorker('spa') // Idioma español preconfigurado
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
 
-  try {
-    // Ejecutamos el análisis de caracteres sobre la imagen del ticket
-    const { data: { text } } = await worker.recognize(file)
-    
-    // Convertimos a mayúsculas para facilitar las comparaciones y saneamos saltos de línea
-    const upperText = text.toUpperCase()
-    const lines = upperText.split('\n')
-
-    let detectedTotal = 0
-    let potentialAmounts = []
-
-    // 1. Buscamos números flotantes válidos en todo el texto procesado
-    // Captura formatos comunes como: 120.00, 1,450.50, 85.99
-    const priceRegex = /\b\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})\b/g
-    const matches = upperText.match(priceRegex)
-
-    if (matches) {
-      potentialAmounts = matches.map(val => {
-        // Normalizamos el formato eliminando comas de miles y forzando punto decimal
-        const normalized = val.replace(/,/g, '')
-        return parseFloat(normalized)
-      }).filter(num => !isNaN(num))
-    }
-
-    // 2. Buscamos líneas que contengan palabras clave críticas de facturación
-    const keywords = ['TOTAL', 'NETO', 'PAGO', 'IMPORT', 'VTA', 'CASH', 'EFECTIVO']
-    
-    for (const line of lines) {
-      const hasKeyword = keywords.some(word => line.includes(item => word))
-      if (hasKeyword) {
-        const lineMatches = line.match(/\b\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})\b/)
-        if (lineMatches) {
-          const parsed = parseFloat(lineMatches[0].replace(/,/g, ''))
-          if (!isNaN(parsed) && parsed > detectedTotal) {
-            detectedTotal = parsed
+        if (width > height) {
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
           }
         }
-      }
-    }
 
-    // 3. Estrategia de respaldo: Si no hay palabra clave pero hay precios, tomamos el valor más alto
-    if (detectedTotal === 0 && potentialAmounts.length > 0) {
-      detectedTotal = Math.max(...potentialAmounts)
-    }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
 
-    // Retornamos el resultado estructurado
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        const base64Data = dataUrl.split(',')[1];
+
+        resolve({
+          inlineData: {
+            data: base64Data,
+            mimeType: 'image/jpeg',
+          },
+        });
+      };
+      img.onerror = (err) => reject(new Error('No se pudo leer la imagen.'));
+    };
+    reader.onerror = (err) => reject(err);
+    reader.readAsDataURL(file);
+  });
+};
+
+export const scanTicketOCR = async (file) => {
+  if (!file) {
+    throw new Error('No se proporcionó ningún archivo de imagen.');
+  }
+
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('Falta configurar la llave VITE_GEMINI_API_KEY en tu archivo .env');
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
+  const imagePart = await fileToGenerativePart(file);
+
+  // 🤖 PROMPT MAESTRO PARA EL DESGLOSE DEL TICKET
+  const prompt = `
+    Analiza esta imagen de un ticket o recibo de compra. Extrae la información y devuélvela en un formato JSON estricto (sin texto adicional ni formato markdown extra) con exactamente estas tres llaves:
+    1. "amount": número flotante con el total exacto a pagar (ej: 150.50). Si no encuentras el total, pon 0.
+    2. "concept": el nombre del comercio, establecimiento o una descripción breve del gasto (en MAYÚSCULAS).
+    3. "category": una categoría sugerida de esta lista exacta: ALIMENTOS, TRANSPORTE, SERVICIOS, ENTRETENIMIENTO, SALUD, SUPERMERCADO, HOGAR, OTROS (en MAYÚSCULAS).
+    
+    Ejemplo de respuesta esperada:
+    {"amount": 250.00, "concept": "SUPERAMA", "category": "SUPERMERCADO"}
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: [prompt, imagePart],
+    });
+
+    const textResponse = response.text ? response.text.trim() : '';
+    const cleanedJsonText = textResponse.replace(/```json/g, '').replace(/```/g, '').trim();
+    const parsedData = JSON.parse(cleanedJsonText);
+
     return {
-      amount: detectedTotal > 0 ? detectedTotal : 0,
-      rawText: text
-    }
+      amount: Number(parsedData.amount) || 0,
+      concept: parsedData.concept || 'COMPRA CON TICKET',
+      category: parsedData.category || 'MERCADO',
+      rawText: textResponse
+    };
 
   } catch (error) {
-    console.error('Error interno en el procesador OCR Tesseract:', error)
-    throw new Error('La IA no pudo procesar la imagen. Verifica el enfoque de la cámara.')
-  } finally {
-    // Forzamos la terminación del hilo para liberar memoria en el navegador
-    await worker.terminate()
+    console.error('Error al procesar con Gemini:', error);
+    throw new Error('La IA no pudo interpretar el ticket. Intenta con una foto más clara.');
   }
-}
+};

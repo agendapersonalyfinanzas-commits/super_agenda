@@ -511,9 +511,41 @@ export default function DashboardScreen() {
         />
       )}
 
+      {/* 📸 ESCANER DE TICKETS INTELIGENTE CON IA */}
       {isOcrOpen && (
         <OCRScanner 
-          onScanSuccess={(res) => { setIsOcrOpen(false); alert('Detectado: ' + formatearMoneda(res.amount)); }} 
+          onScanSuccess={async (res) => {
+            setIsOcrOpen(false);
+            try {
+              const expensePayload = {
+                concept: res.concept || 'COMPRA CON TICKET',
+                amount: res.amount || 0,
+                category: res.category || 'MERCADO',
+                date: retroactiveDate,
+                is_retroactive: Boolean(retroactiveDate)
+              };
+
+              if (typeof txManager.handleSaveTransaction === 'function') {
+                await txManager.handleSaveTransaction(expensePayload, 'expense');
+              } else {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (user) {
+                  await supabase.from('expenses').insert([{
+                    user_id: targetUserForTx || user.id,
+                    concept: expensePayload.concept,
+                    amount: expensePayload.amount,
+                    category: expensePayload.category,
+                    date: expensePayload.date
+                  }]);
+                }
+              }
+
+              alert(`¡Ticket escaneado y guardado con éxito!\nComercio: ${expensePayload.concept}\nMonto: ${formatearMoneda(expensePayload.amount)}\nCategoría: ${expensePayload.category}`);
+            } catch (err) {
+              console.error('Error al guardar el ticket escaneado:', err);
+              alert('Ocurrió un error al registrar el gasto del ticket en la base de datos.');
+            }
+          }} 
           onClose={() => setIsOcrOpen(false)} 
         />
       )}
