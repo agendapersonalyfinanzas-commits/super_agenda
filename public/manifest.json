@@ -1,0 +1,19 @@
+{
+  "name": "Super Agenda Finanzas",
+  "short_name": "SuperAgenda",
+  "description": "Tu control diario de agenda, tareas y finanzas al estilo clásico Peanuts",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FAF7F2",
+  "theme_color": "#FBBF24",
+  "icons": [
+    {
+      "src": "/super-snoopy.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
