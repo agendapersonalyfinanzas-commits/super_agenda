@@ -1,7 +1,6 @@
-// src/components/Calendar/DayChecklist.jsx
 import React from 'react';
 
-export default function DayChecklist({ selectedDate, dayTasks, handleToggleComplete, handleDeleteTask, onClose, onSwitchToCanvas }) {
+export default function DayChecklist({ selectedDate, dayTasks, handleToggleComplete, handleDeleteTask, onClose, onSwitchToCanvas, isAuditor, auditedUserName }) {
   
   const getDateObj = (dateInput) => {
     if (!dateInput) return new Date();
@@ -48,13 +47,22 @@ export default function DayChecklist({ selectedDate, dayTasks, handleToggleCompl
         ✕
       </button>
 
-      <div className="border-b-4 border-black pb-3 pr-8">
-        <h2 className="text-lg font-black uppercase text-black">
-          📋 ACTIVIDADES Y PAGOS DEL DÍA
-        </h2>
-        <span className="text-xs font-bold bg-white border-2 border-black px-2 py-0.5 rounded-lg inline-block mt-1">
-          {formattedDateString}
-        </span>
+      <div className="border-b-4 border-black pb-3 pr-8 space-y-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <h2 className="text-lg font-black uppercase text-black">
+            📋 ACTIVIDADES Y PAGOS DEL DÍA
+          </h2>
+        </div>
+        {isAuditor && auditedUserName && (
+          <div className="bg-red-500 text-white border-2 border-black px-2.5 py-0.5 rounded-lg text-[10px] font-black uppercase inline-block shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] tracking-wide">
+            🔍 Auditando a: {auditedUserName}
+          </div>
+        )}
+        <div>
+          <span className="text-xs font-bold bg-white border-2 border-black px-2 py-0.5 rounded-lg inline-block mt-1">
+            {formattedDateString}
+          </span>
+        </div>
       </div>
 
       {/* Botón para abrir lienzo S-Pen */}

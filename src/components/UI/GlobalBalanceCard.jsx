@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { formatearMoneda } from '../../utils/moneda.js';
 import PDFPreviewModal from './PDFPreviewModal.jsx'; // <--- Importamos el modal con zoom
 
-export default function GlobalBalanceCard({ totalIncome, weeklyTotal, bgImage, transactions = [] }) {
+export default function GlobalBalanceCard({ totalIncome, weeklyTotal, bgImage, transactions = [], isAuditor, auditedUserName }) {
   const netBalance = totalIncome - weeklyTotal;
   const [isPreviewOpen, setIsPreviewOpen] = useState(false); // <--- Estado para el modal de zoom
 
@@ -16,9 +16,16 @@ export default function GlobalBalanceCard({ totalIncome, weeklyTotal, bgImage, t
         />
         
         <div className="relative z-10 space-y-1">
-          {/* Cabecera con título y botón PDF con Zoom */}
-          <div className="flex justify-between items-center">
-            <h2 className="text-xs font-black uppercase text-stone-600">Balance Neto Global</h2>
+          {/* Cabecera con título, aviso de auditoría y botón PDF con Zoom */}
+          <div className="flex justify-between items-center flex-wrap gap-2">
+            <div>
+              <h2 className="text-xs font-black uppercase text-stone-600">Balance Neto Global</h2>
+              {isAuditor && auditedUserName && (
+                <span className="inline-block mt-0.5 bg-red-500 text-white border border-black px-2 py-0.5 rounded text-[9px] font-black uppercase shadow-[1px_1px_0px_rgba(0,0,0,1)]">
+                  🔍 Auditando: {auditedUserName}
+                </span>
+              )}
+            </div>
             <button
               type="button"
               onClick={() => setIsPreviewOpen(true)}
@@ -29,7 +36,7 @@ export default function GlobalBalanceCard({ totalIncome, weeklyTotal, bgImage, t
             </button>
           </div>
 
-          <div className="text-[9px] font-bold text-stone-500 uppercase tracking-tight">
+          <div className="text-[9px] font-bold text-stone-500 uppercase tracking-tight pt-1">
             Ingresos: {formatearMoneda(totalIncome)} | Gastos: {formatearMoneda(weeklyTotal)}
           </div>
         </div>

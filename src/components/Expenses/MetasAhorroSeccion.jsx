@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
 import MetaCardItem from './MetaCardItem';
 
-export default function MetasAhorroSeccion({ activeUser }) {
+export default function MetasAhorroSeccion({ activeUser, auditorMode, isMasterAuditor, usersList = [] }) {
   const [metas, setMetas] = useState([]);
   const [loading, setLoading] = useState(true);
   
@@ -16,8 +16,32 @@ export default function MetasAhorroSeccion({ activeUser }) {
   
   const [filtroEstado, setFiltroEstado] = useState('todas');
 
+  // 🌟 RESOLVER EL UUID REAL DEL OBJETIVO SI ESTAMOS EN MODO DIOS
+  const targetUserId = React.useMemo(() => {
+    if (auditorMode && isMasterAuditor) {
+      if (!activeUser) return null;
+      if (typeof activeUser === 'object' && activeUser !== null) {
+        return activeUser.id || null;
+      }
+      if (typeof activeUser === 'string') {
+        const isUUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(activeUser);
+        if (isUUID) return activeUser;
+
+        const nameUpper = activeUser.trim().toUpperCase();
+        const found = usersList.find(u => (u.nombre || '').trim().toUpperCase().includes(nameUpper));
+        if (found) return found.id;
+
+        if (nameUpper.includes('IVONNE')) return '88ea108e-a3bb-489d-a82f-d0d5f0fdb6bf';
+        if (nameUpper.includes('MARY')) return '74138fee-3bce-4ec1-b88a-6742a42a3315';
+        if (nameUpper.includes('LUIS')) return '20864ee9-9e20-4e64-a634-d0b6a12dff6b';
+      }
+      return null;
+    }
+    return activeUser;
+  }, [auditorMode, isMasterAuditor, activeUser, usersList]);
+
   useEffect(() => {
-    if (activeUser) {
+    if (targetUserId) {
       fetchMetas();
     }
 
@@ -30,15 +54,16 @@ export default function MetasAhorroSeccion({ activeUser }) {
     return () => {
       window.removeEventListener('goal-updated', handleGoalUpdated);
     };
-  }, [activeUser]);
+  }, [targetUserId]);
 
   const fetchMetas = async () => {
+    if (!targetUserId) return;
     try {
       setLoading(true);
       const { data, error } = await supabase
         .from('savings_goals')
         .select('*')
-        .eq('player_id', activeUser)
+        .eq('player_id', targetUserId)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -52,7 +77,7 @@ export default function MetasAhorroSeccion({ activeUser }) {
 
   const handleCreateMeta = async (e) => {
     e.preventDefault();
-    if (!nuevoTitulo.trim() || !nuevoMonto) return;
+    if (!nuevoTitulo.trim() || !nuevoMonto || !targetUserId) return;
 
     const montoNum = parseFloat(nuevoMonto);
     setMensajeExito('');
@@ -68,7 +93,7 @@ export default function MetasAhorroSeccion({ activeUser }) {
             current_amount: 0,
             fecha_limite: nuevaFecha || null,
             icon: nuevoIcon,
-            player_id: activeUser 
+            player_id: targetUserId 
           }
         ]);
 
@@ -241,8 +266,11 @@ export default function MetasAhorroSeccion({ activeUser }) {
             <MetaCardItem 
               key={meta.id} 
               meta={meta} 
-              activeUser={activeUser} 
+              activeUser={targetUserId} 
               onUpdate={fetchMetas} 
+              auditorMode={auditorMode}
+              isMasterAuditor={isMasterAuditor}
+              usersList={usersList}
             />
           ))}
         </div>

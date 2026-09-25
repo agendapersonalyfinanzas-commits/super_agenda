@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { supabase } from '../../supabaseClient';
 
-export default function MetaCardItem({ meta, activeUser, onUpdate }) {
+export default function MetaCardItem({ meta, activeUser, onUpdate, auditorMode, isMasterAuditor, usersList = [] }) {
   const [montoAbono, setMontoAbono] = useState('');
   const [loadingAbono, setLoadingAbono] = useState(false);
 
@@ -11,6 +11,30 @@ export default function MetaCardItem({ meta, activeUser, onUpdate }) {
   const isCompleted = porcentaje >= 100;
   const tituloMeta = meta.goal_name || 'Meta sin nombre';
   const fechaLimite = meta.fecha_limite;
+
+  // 🌟 RESOLVER EL UUID O CORREO DEL USUARIO OBJETIVO SI ESTAMOS EN MODO DIOS
+  const targetUserIdOrEmail = React.useMemo(() => {
+    if (auditorMode && isMasterAuditor) {
+      if (!activeUser) return null;
+      if (typeof activeUser === 'object' && activeUser !== null) {
+        return activeUser.id || null;
+      }
+      if (typeof activeUser === 'string') {
+        const isUUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(activeUser);
+        if (isUUID) return activeUser;
+
+        const nameUpper = activeUser.trim().toUpperCase();
+        const found = usersList.find(u => (u.nombre || '').trim().toUpperCase().includes(nameUpper));
+        if (found) return found.id;
+
+        if (nameUpper.includes('IVONNE')) return '88ea108e-a3bb-489d-a82f-d0d5f0fdb6bf';
+        if (nameUpper.includes('MARY')) return '74138fee-3bce-4ec1-b88a-6742a42a3315';
+        if (nameUpper.includes('LUIS')) return '20864ee9-9e20-4e64-a634-d0b6a12dff6b';
+      }
+      return null;
+    }
+    return null; // En modo normal se usa la sesión del usuario autenticado por defecto
+  }, [auditorMode, isMasterAuditor, activeUser, usersList]);
 
   const getMensajeWoodstock = (p) => {
     if (p >= 100) return "¡Lo lograste, felicidades! 🏆🎉";
@@ -38,11 +62,21 @@ export default function MetaCardItem({ meta, activeUser, onUpdate }) {
 
       if (errorMeta) throw errorMeta;
 
-      // 2. Obtener el correo del usuario
+      // 2. Obtener el correo o asignar el usuario auditado correspondiente
       const { data: authData } = await supabase.auth.getUser();
-      const userEmail = authData?.user?.email || null;
+      let userEmail = authData?.user?.email || null;
+      let targetUuidToSave = meta.user_id || authData?.user?.id;
 
-      // 3. Registrar transacción
+      if (auditorMode && isMasterAuditor && targetUserIdOrEmail) {
+        targetUuidToSave = targetUserIdOrEmail;
+        // Si el usuario auditado tiene un correo asociado en usersList, lo asignamos
+        const foundProfile = usersList.find(u => u.id === targetUserIdOrEmail);
+        if (foundProfile && foundProfile.email) {
+          userEmail = foundProfile.email;
+        }
+      }
+
+      // 3. Registrar transacción vinculada al perfil correcto
       const { error: errorTrans } = await supabase
         .from('transactions')
         .insert([
@@ -51,7 +85,9 @@ export default function MetaCardItem({ meta, activeUser, onUpdate }) {
             amount: abono,
             transaction_type: 'expense',
             category: 'AHORRO',
-            auth_user_email: userEmail
+            auth_user_email: userEmail,
+            user_id: targetUuidToSave,
+            player_id: targetUuidToSave
           }
         ]);
 

@@ -22,6 +22,21 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('finances'); // 'finances' | 'agenda' | 'metrics' | 'games'
   const [selectedGame, setSelectedGame] = useState(null); 
 
+  // --- ESTADOS DE MODO DIOS / AUDITORÍA ---
+  const [auditorMode, setAuditorMode] = useState(() => {
+    return localStorage.getItem('family_auditor_mode') === 'true';
+  });
+  const [activeUser, setActiveUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem('family_audited_user');
+      return saved ? JSON.parse(saved) : saved;
+    } catch {
+      return localStorage.getItem('family_audited_user');
+    }
+  });
+  const [isMasterAuditor, setIsMasterAuditor] = useState(true);
+  const [usersList, setUsersList] = useState([]);
+
   // Estados para el formulario de Autenticación
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -37,7 +52,7 @@ export default function App() {
   
   const [isRegistering, setIsRegistering] = useState(false);
 
-  // 🌟 SISTEMA DE SINCRONIZACIÓN OFFLINE
+  // 🌟 SISTEMA DE SINCRONIZACIÓN OFFLINE Y ESTADOS DE AUDITORÍA
   useEffect(() => {
     procesarColaOffline();
 
@@ -48,10 +63,36 @@ export default function App() {
 
     window.addEventListener('online', handleOnline);
 
+    // Sincronizar Modo Dios / Auditoría desde localStorage de forma reactiva
+    const syncAuditorState = () => {
+      const mode = localStorage.getItem('family_auditor_mode') === 'true';
+      setAuditorMode(mode);
+      try {
+        const savedUser = localStorage.getItem('family_audited_user');
+        setActiveUser(savedUser ? JSON.parse(savedUser) : savedUser);
+      } catch {
+        setActiveUser(localStorage.getItem('family_audited_user'));
+      }
+    };
+
+    window.addEventListener('storage', syncAuditorState);
+    window.addEventListener('auditor-state-changed', syncAuditorState);
+    const interval = setInterval(syncAuditorState, 300);
+
+    // Cargar lista de usuarios para el mapeo en Modo Dios
+    const fetchUsers = async () => {
+      const { data } = await supabase.from('users').select('*');
+      if (data) setUsersList(data);
+    };
+    fetchUsers();
+
     return () => {
       window.removeEventListener('online', handleOnline);
+      window.removeEventListener('storage', syncAuditorState);
+      window.removeEventListener('auditor-state-changed', syncAuditorState);
+      clearInterval(interval);
     };
-  }, []);
+  }, [activeTab]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -267,11 +308,25 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#Fef8e7] font-mono selection:bg-amber-300 relative pb-28">
       
-      {/* RENDERIZADO DE LAS PANTALLAS (DashboardScreen ya maneja su propio header dinámico e inteligente) */}
+      {/* RENDERIZADO DE LAS PANTALLAS CON SOPORTE DE MODO DIOS */}
       <main className="p-4">
         {activeTab === 'finances' && <DashboardScreen />}
-        {activeTab === 'agenda' && <CalendarScreen />}
-        {activeTab === 'metrics' && <AnalyticsScreen />}
+        {activeTab === 'agenda' && (
+          <CalendarScreen 
+            activeUser={activeUser}
+            auditorMode={auditorMode}
+            isMasterAuditor={isMasterAuditor}
+            usersList={usersList}
+          />
+        )}
+        {activeTab === 'metrics' && (
+          <AnalyticsScreen 
+            activeUser={activeUser}
+            auditorMode={auditorMode}
+            isMasterAuditor={isMasterAuditor}
+            usersList={usersList}
+          />
+        )}
         {activeTab === 'games' && (
           <GameScreen 
             activeUser={user_name || session?.user?.email || 'Snoopy'}

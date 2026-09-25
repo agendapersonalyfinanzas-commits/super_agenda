@@ -1,8 +1,7 @@
-// src/components/Calendar/CalendarGrid.jsx
 import React, { useState } from 'react';
 import { aMayusculas } from '../../utils/mayusculas.js';
 
-export default function CalendarGrid({ onSelectDay, dayTasks = {} }) {
+export default function CalendarGrid({ onSelectDay, dayTasks = {}, isAuditor, auditedUserName }) {
   const [currentDate, setCurrentDate] = useState(new Date());
 
   const year = currentDate.getFullYear();
@@ -55,8 +54,13 @@ export default function CalendarGrid({ onSelectDay, dayTasks = {} }) {
   return (
     <div className="w-full bg-white border-4 border-black p-2 sm:p-6 rounded-3xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] font-mono select-none">
       
-      {/* CONTROLES DE MES */}
+      {/* CONTROLES DE MES Y AVISO DE AUDITORÍA */}
       <div className="flex flex-col items-center gap-2 sm:gap-3 mb-4 sm:mb-6 border-b-4 border-black pb-3 sm:pb-4">
+        {isAuditor && auditedUserName && (
+          <div className="bg-red-500 text-white border-2 border-black px-3 py-1 rounded-xl text-[10px] sm:text-xs font-black uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] tracking-wide mb-1">
+            🔍 Auditando agenda de: {auditedUserName}
+          </div>
+        )}
         <h2 className="text-lg sm:text-xl font-black uppercase tracking-tight text-center">
           {aMayusculas(`${meses[month]} ${year}`)}
         </h2>
@@ -98,7 +102,7 @@ export default function CalendarGrid({ onSelectDay, dayTasks = {} }) {
         {Array.from({ length: totalDays }).map((_, index) => {
           const dayNum = index + 1;
           
-          // Formato YYYY-MM-DD estándar para empatar con la base de datos y DayChecklist
+          // Formato YYYY-MM-DD estándar unificado
           const formattedDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
           
           const cellDate = new Date(year, month, dayNum);
@@ -124,7 +128,6 @@ export default function CalendarGrid({ onSelectDay, dayTasks = {} }) {
                 isToday ? 'ring-3 sm:ring-4 ring-sky-500 z-10' : ''
               }`}
             >
-              {/* Número del día e indicador de HOY */}
               <div className="w-full flex items-center justify-between gap-0.5 leading-none">
                 <span className="text-[11px] sm:text-sm font-black">{dayNum}</span>
                 {isToday && (
@@ -134,7 +137,6 @@ export default function CalendarGrid({ onSelectDay, dayTasks = {} }) {
                 )}
               </div>
 
-              {/* Resumen financiero dentro de la celda */}
               {hasTasks ? (
                 <div className="w-full flex flex-col gap-0.5 overflow-hidden text-left leading-none">
                   {totalMonto > 0 && (

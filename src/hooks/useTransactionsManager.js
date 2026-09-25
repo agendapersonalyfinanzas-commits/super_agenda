@@ -19,57 +19,20 @@ export function useTransactionsManager(activeUser, auditorMode, isMasterAuditor,
         return;
       }
 
-      const userId = session.user.id;
+      const sessionUserId = session.user.id;
       const userEmail = session.user.email;
 
-      // Ordenado por transaction_date como dicta el esquema de base de datos
+      // Consulta abierta a transactions (el RLS global del maestro permite leer todo)
       let transQuery = supabase
         .from('transactions')
         .select('*')
         .order('transaction_date', { ascending: false });
 
-      // Auditoría o filtrado normal respetando las políticas RLS de Supabase
-      if (auditorMode && activeUser) {
-        let targetId = null;
-        let targetName = '';
-        let targetEmail = '';
-
-        if (typeof activeUser === 'object' && activeUser !== null) {
-          targetId = activeUser.id || null;
-          targetName = `${activeUser.nombre || ''} ${activeUser.apellido_paterno || ''}`.trim();
-          targetEmail = activeUser.email || '';
-        } else if (typeof activeUser === 'string') {
-          const isUUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(activeUser);
-          if (isUUID) {
-            targetId = activeUser;
-          } else if (activeUser.includes('@')) {
-            targetEmail = activeUser;
-          } else {
-            targetName = activeUser;
-          }
-        }
-
-        const conditions = [];
-        if (targetId) {
-          conditions.push(`user_id.eq.${targetId}`);
-          conditions.push(`player_id.eq.${targetId}`);
-        }
-        if (targetEmail) {
-          conditions.push(`auth_user_email.eq.${targetEmail}`);
-        }
-        if (targetName) {
-          conditions.push(`auth_user_email.ilike.%${targetName}%`);
-        }
-
-        if (conditions.length > 0) {
-          transQuery = transQuery.or(conditions.join(','));
-        }
-      } else {
-        // Filtrado por correo de sesión actual exigido por las políticas RLS
+      if (!auditorMode || !isMasterAuditor) {
         if (userEmail) {
           transQuery = transQuery.eq('auth_user_email', userEmail);
-        } else if (userId) {
-          transQuery = transQuery.eq('user_id', userId);
+        } else if (sessionUserId) {
+          transQuery = transQuery.eq('user_id', sessionUserId);
         }
       }
 
@@ -81,16 +44,66 @@ export function useTransactionsManager(activeUser, auditorMode, isMasterAuditor,
       }
 
       if (trans) {
-        setRecentTransactions(trans);
+        let finalTrans = trans;
 
-        const expensesSum = trans
+        if (auditorMode && isMasterAuditor) {
+          if (!activeUser) {
+            finalTrans = []; // Cero datos si no se ha seleccionado a nadie en modo dios
+          } else {
+            let targetUuid = null;
+
+            // 1. Extraer el UUID directamente si activeUser es un objeto o string con formato UUID
+            if (typeof activeUser === 'object' && activeUser !== null) {
+              targetUuid = activeUser.id || null;
+            } else if (typeof activeUser === 'string') {
+              const isUUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(activeUser);
+              if (isUUID) {
+                targetUuid = activeUser;
+              }
+            }
+
+            // 2. Si activeUser era un nombre (ej. "IVONNE" o "MARY JOSE"), mapearlo con los UUIDs oficiales que me diste
+            if (!targetUuid && typeof activeUser === 'string') {
+              const nameUpper = activeUser.toUpperCase().trim();
+              if (nameUpper.includes('IVONNE')) {
+                targetUuid = '88ea108e-a3bb-489d-a82f-d0d5f0fdb6bf';
+              } else if (nameUpper.includes('MARY') || nameUpper.includes('MARIA')) {
+                targetUuid = '74138fee-3bce-4ec1-b88a-6742a42a3315';
+              } else if (nameUpper.includes('LUIS')) {
+                targetUuid = '20864ee9-9e20-4e64-a634-d0b6a12dff6b';
+              }
+            }
+
+            // 3. Buscar en customUsers por si acaso llegó un objeto parcial
+            if (!targetUuid && customUsers && customUsers.length > 0 && typeof activeUser === 'string') {
+              const found = customUsers.find(u => 
+                u.nombre?.toUpperCase().includes(activeUser.toUpperCase().trim()) ||
+                u.id === activeUser
+              );
+              if (found) targetUuid = found.id;
+            }
+
+            // 4. Filtrado estricto por el UUID oficial del usuario seleccionado
+            if (targetUuid) {
+              finalTrans = trans.filter(t => {
+                return t.user_id === targetUuid || t.player_id === targetUuid;
+              });
+            } else {
+              finalTrans = [];
+            }
+          }
+        }
+
+        setRecentTransactions(finalTrans);
+
+        const expensesSum = finalTrans
           .filter(t => {
             const tType = (t.transaction_type || t.type || '').toLowerCase();
             return tType === 'expense' || tType === 'gasto' || tType === 'egreso';
           })
           .reduce((acc, curr) => acc + aNumero(curr.amount), 0);
           
-        const incomeSum = trans
+        const incomeSum = finalTrans
           .filter(t => {
             const tType = (t.transaction_type || t.type || '').toLowerCase();
             return tType === 'income' || tType === 'ingreso';
@@ -102,11 +115,11 @@ export function useTransactionsManager(activeUser, auditorMode, isMasterAuditor,
         setIsSampleData(false);
 
         const netBalance = incomeSum - expensesSum;
-        let currentUserName = 'LUIS RICARDO';
+        let currentUserName = 'SELECCIONA USUARIO';
 
         if (auditorMode && activeUser) {
           if (typeof activeUser === 'object' && activeUser !== null) {
-            currentUserName = aMayusculas(`${activeUser.nombre || ''} ${activeUser.apellido_paterno || ''}`.trim() || 'IVONNE VALDEZ');
+            currentUserName = aMayusculas(`${activeUser.nombre || ''} ${activeUser.apellido_paterno || ''}`.trim());
           } else {
             currentUserName = aMayusculas(activeUser);
           }
@@ -122,7 +135,7 @@ export function useTransactionsManager(activeUser, auditorMode, isMasterAuditor,
     } catch (err) {
       console.error('Error al obtener transacciones:', err?.message || err);
     }
-  }, [activeUser, auditorMode, isMasterAuditor]);
+  }, [activeUser, auditorMode, isMasterAuditor, customUsers]);
 
   useEffect(() => {
     fetchTransactionsAndTotals();
@@ -134,12 +147,10 @@ export function useTransactionsManager(activeUser, auditorMode, isMasterAuditor,
       const catVal = typeof data === 'object' ? aMayusculas(data.category) : 'GENERAL';
       const conceptVal = typeof data === 'object' ? aMayusculas(data.concept) : (type === 'expense' ? 'GASTO' : 'INGRESO');
       
-      // Captura limpia de la fecha retroactiva seleccionada (o la actual por defecto)
       const dateVal = (typeof data === 'object' && (data.date || data.transaction_date)) 
         ? (data.date || data.transaction_date) 
         : new Date().toISOString().split('T')[0];
 
-      // 🟢 Capturar la bandera explícita de retroactividad desde el formulario
       const isRetroactiveVal = typeof data === 'object' ? Boolean(data.is_retroactive) : false;
 
       const inserted = await saveTransaction({
@@ -150,7 +161,7 @@ export function useTransactionsManager(activeUser, auditorMode, isMasterAuditor,
         userName: activeUser,
         date: dateVal,
         transaction_date: dateVal,
-        is_retroactive: isRetroactiveVal // 👈 Pasada correctamente al servicio
+        is_retroactive: isRetroactiveVal
       });
 
       await fetchTransactionsAndTotals();
@@ -180,7 +191,7 @@ export function useTransactionsManager(activeUser, auditorMode, isMasterAuditor,
         concept: aMayusculas(updatedData.concept),
         transaction_type: updatedData.transaction_type,
         transaction_date: updatedData.date || updatedData.transaction_date,
-        is_retroactive: Boolean(updatedData.is_retroactive) // 👈 Actualización de la bandera
+        is_retroactive: Boolean(updatedData.is_retroactive)
       } : { amount: aNumero(updatedData) };
 
       await updateTransactionAmount(id, payload);

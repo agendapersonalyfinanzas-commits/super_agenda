@@ -39,7 +39,7 @@ export default function Navigation({ activeTab, setActiveTab }) {
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-[#Fef8e7] border-t-4 border-black p-3 z-40 font-mono shadow-[0px_-6px_0px_0px_rgba(0,0,0,1)] select-none">
-      <div className="max-w-lg mx-auto grid grid-cols-4 gap-2.5">
+      <div className="max-w-xl mx-auto grid grid-cols-4 gap-2">
         {navItems.map((item) => {
           const isActive = activeTab === item.id;
           return (
@@ -47,10 +47,10 @@ export default function Navigation({ activeTab, setActiveTab }) {
               key={item.id}
               type="button"
               onClick={() => setActiveTab(item.id)}
-              className={`relative h-20 sm:h-24 border-4 border-black rounded-2xl overflow-hidden transition-all cursor-pointer flex flex-col justify-end p-1.5 ${
+              className={`relative h-20 sm:h-24 border-4 border-black rounded-2xl overflow-hidden transition-all cursor-pointer flex flex-col justify-end p-1 ${
                 isActive 
                   ? `shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-x-0.5 translate-y-0.5 ring-2 ring-black` 
-                  : `shadow-[5px_5px_0px_0px_rgba(0,0,0,1)] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]`
+                  : `shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]`
               }`}
             >
               {/* Imagen cubriendo todo el fondo del botón */}
@@ -64,7 +64,7 @@ export default function Navigation({ activeTab, setActiveTab }) {
               <div className="absolute inset-0 bg-linear-to-t from-black/50 via-transparent to-transparent pointer-events-none" />
 
               {/* Etiqueta de texto inferior con su color retro característico */}
-              <div className={`relative z-10 border-2 border-black rounded-xl py-1 px-0.5 text-center font-black uppercase text-[9px] sm:text-[10px] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${
+              <div className={`relative z-10 border-2 border-black rounded-xl py-1 px-0.5 text-center font-black uppercase text-[8px] sm:text-[9px] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${
                 isActive ? item.activeBg : item.bgColor
               } text-black truncate`}>
                 {item.label}

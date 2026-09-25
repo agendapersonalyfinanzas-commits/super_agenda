@@ -1,102 +1,128 @@
-// src/components/Calendar/EventModal.jsx
 import React from 'react';
-import { aMayusculas } from '../../utils/mayusculas.js';
 
-export default function EventModal({
-  selectedDate,
-  setSelectedDate,
-  setIsCanvasOpen,
-  setIsVoiceOpen,
-  newTaskDate,
-  setModalCalendarDate,
-  modalCalendarDate,
-  setNewTaskDate,
-  newTaskTime,
-  setNewTaskTime,
-  newTaskText,
-  setNewTaskText,
-  esPagoProgramado,
-  setEsPagoProgramado,
-  montoPago,
-  setMontoPago,
-  tipoMovimiento,
-  setTipoMovimiento,
-  categoriaPago,
-  setCategoriaPago,
-  frecuenciaPago,
-  setFrecuenciaPago,
-  handleAddTask,
-  dayTasks,
-  getSemaforoVisual,
-  handleToggleComplete,
-  handleDeleteTask
-}) {
-  if (!selectedDate) return null;
+export default function EventModal(props) {
+  const {
+    selectedDate,
+    handleCloseModal,
+    onClose,
+    setSelectedDate,
+    setIsCanvasOpen,
+    setIsVoiceOpen,
+    newTaskDate,
+    setNewTaskDate,
+    modalCalendarDate,
+    setModalCalendarDate,
+    newTaskTime,
+    setNewTaskTime,
+    newTaskText,
+    setNewTaskText,
+    esPagoProgramado,
+    setEsPagoProgramado,
+    montoPago,
+    setMontoPago,
+    tipoMovimiento = 'expense',
+    setTipoMovimiento,
+    categoriaPago = 'GENERAL',
+    setCategoriaPago,
+    frecuenciaPago = 'single',
+    setFrecuenciaPago,
+    handleAddTask,
+    dayTasks = [],
+    dayTasksMap = {},
+    getSemaforoVisual,
+    handleToggleComplete,
+    handleDeleteTask,
+    isModalOpen = true
+  } = props;
 
-  // 🛡️ Blindaje inteligente: Asegura una fecha válida para el mini-calendario del modal
-  const safeModalDate = (modalCalendarDate instanceof Date && !isNaN(modalCalendarDate))
+  if (!selectedDate && !isModalOpen) return null;
+
+  const activeTasks = Array.isArray(dayTasks) 
+    ? dayTasks 
+    : (dayTasksMap && dayTasksMap[selectedDate]) || [];
+
+  const categoriasDisponibles = ['GENERAL', 'COMIDA', 'SERVICIOS', 'RENTA', 'OTROS'];
+
+  // 🛡️ Blindaje absoluto de fecha para evitar "INVALID DATE" o "undefined"
+  const safeCalendarDate = (modalCalendarDate instanceof Date && !isNaN(modalCalendarDate))
     ? modalCalendarDate
-    : (selectedDate ? new Date(`${selectedDate}T00:00:00`) : new Date());
+    : new Date();
 
-  const modalYear = safeModalDate.getFullYear();
-  const modalMonth = safeModalDate.getMonth();
+  const currentYear = safeCalendarDate.getFullYear();
+  const currentMonth = safeCalendarDate.getMonth();
+
+  const displayDateLabel = newTaskDate || selectedDate || new Date().toISOString().split('T')[0];
+
+  // Función de cierre universal
+  const triggerClose = () => {
+    if (typeof handleCloseModal === 'function') {
+      handleCloseModal();
+    } else if (typeof onClose === 'function') {
+      onClose();
+    } else if (typeof setSelectedDate === 'function') {
+      setSelectedDate(null);
+    }
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 font-mono select-none">
-      <div className="w-full max-w-lg bg-amber-400 border-4 border-black rounded-3xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 font-mono select-none overflow-y-auto">
+      <div className="w-full max-w-lg bg-amber-400 border-4 border-black rounded-3xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-6 space-y-4 max-h-[90vh] overflow-y-auto my-auto">
         
+        {/* ENCABEZADO Y BOTÓN CERRAR */}
         <div className="flex justify-between items-center border-b-4 border-black pb-3">
           <div>
             <h3 className="font-black uppercase text-base text-black">
-              {aMayusculas('Actividades y Pagos del Día')}
+              ACTIVIDADES Y PAGOS DEL DÍA
             </h3>
-            <p className="text-xs font-bold text-amber-950">{selectedDate}</p>
+            <p className="text-xs font-bold text-amber-950">{selectedDate || displayDateLabel}</p>
           </div>
           <button 
             type="button"
-            onClick={() => setSelectedDate(null)} 
-            className="text-black font-black text-xl hover:text-stone-800 cursor-pointer"
+            onClick={triggerClose} 
+            className="text-black font-black text-2xl hover:text-rose-700 cursor-pointer p-1 leading-none transition-transform hover:scale-125 bg-amber-300 hover:bg-amber-200 border-2 border-black rounded-lg w-8 h-8 flex items-center justify-center shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+            aria-label="Cerrar modal"
           >
             ✕
           </button>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setIsCanvasOpen(true)}
-          className="w-full py-2.5 bg-white border-4 border-black rounded-xl font-black text-xs uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all cursor-pointer"
-        >
-          ✏️ {aMayusculas('Abrir Lienzo S-Pen')}
-        </button>
-
-        {/* FORMULARIO DE NUEVA ACTIVIDAD CON SELECTOR DE HORA RETRO-COMIC */}
+        {/* FORMULARIO */}
         <div className="space-y-3 bg-amber-300 p-3.5 border-3 border-black rounded-2xl shadow-[3px_3px_0px_rgba(0,0,0,1)]">
           
-          <div className="bg-white border-3 border-black rounded-2xl p-3 space-y-2">
+          {/* NAVEGADOR DE FECHAS EN MODAL (BLINDADO) */}
+          <div className="bg-white border-3 border-black rounded-2xl p-3 space-y-2 shadow-[2px_2px_0px_rgba(0,0,0,1)]">
             <div className="flex justify-between items-center font-black text-xs uppercase">
-              <span>📅 Fecha Seleccionada:</span>
+              <span>📅 FECHA SELECCIONADA:</span>
               <span className="bg-amber-200 border border-black px-2 py-0.5 rounded text-[10px]">
-                {newTaskDate || selectedDate}
+                {displayDateLabel}
               </span>
             </div>
 
             <div className="flex justify-between items-center bg-amber-100 border-2 border-black rounded-xl p-1.5">
               <button 
                 type="button"
-                onClick={() => setModalCalendarDate(new Date(modalYear, modalMonth - 1, 1))}
-                className="px-2.5 py-1 bg-white border border-black rounded-lg font-black text-[10px] uppercase cursor-pointer hover:bg-stone-100 active:translate-x-0.5 active:translate-y-0.5"
+                onClick={() => {
+                  if (setModalCalendarDate) {
+                    setModalCalendarDate(new Date(currentYear, currentMonth - 1, 1));
+                  }
+                }}
+                className="px-2.5 py-1 bg-white border border-black rounded-lg font-black text-[10px] uppercase cursor-pointer hover:bg-stone-100"
               >
-                ◀ Mes
+                ◀ MES
               </button>
               <span className="font-black text-xs uppercase">
-                {safeModalDate.toLocaleString('es-ES', { month: 'long', year: 'numeric' })}
+                {safeCalendarDate.toLocaleString('es-ES', { month: 'long', year: 'numeric' })}
               </span>
               <button 
                 type="button"
-                onClick={() => setModalCalendarDate(new Date(modalYear, modalMonth + 1, 1))}
-                className="px-2.5 py-1 bg-white border border-black rounded-lg font-black text-[10px] uppercase cursor-pointer hover:bg-stone-100 active:translate-x-0.5 active:translate-y-0.5"
+                onClick={() => {
+                  if (setModalCalendarDate) {
+                    setModalCalendarDate(new Date(currentYear, currentMonth + 1, 1));
+                  }
+                }}
+                className="px-2.5 py-1 bg-white border border-black rounded-lg font-black text-[10px] uppercase cursor-pointer hover:bg-stone-100"
               >
-                Mes ▶
+                MES ▶
               </button>
             </div>
 
@@ -104,22 +130,22 @@ export default function EventModal({
               {['D', 'L', 'M', 'M', 'J', 'V', 'S'].map((d, i) => (
                 <div key={i} className="text-stone-600 pb-1">{d}</div>
               ))}
-              {Array.from({ length: new Date(modalYear, modalMonth, 1).getDay() }).map((_, i) => (
+              {Array.from({ length: new Date(currentYear, currentMonth, 1).getDay() }).map((_, i) => (
                 <div key={`empty-${i}`} />
               ))}
-              {Array.from({ length: new Date(modalYear, modalMonth + 1, 0).getDate() }).map((_, i) => {
+              {Array.from({ length: new Date(currentYear, currentMonth + 1, 0).getDate() }).map((_, i) => {
                 const dayNum = i + 1;
-                const y = modalYear;
-                const m = String(modalMonth + 1).padStart(2, '0');
+                const y = currentYear;
+                const m = String(currentMonth + 1).padStart(2, '0');
                 const d = String(dayNum).padStart(2, '0');
                 const dateStr = `${y}-${m}-${d}`;
-                const isSelected = (newTaskDate || selectedDate) === dateStr;
+                const isSelected = displayDateLabel === dateStr;
 
                 return (
                   <button
                     key={dayNum}
                     type="button"
-                    onClick={() => setNewTaskDate(dateStr)}
+                    onClick={() => setNewTaskDate && setNewTaskDate(dateStr)}
                     className={`h-7 rounded-lg border border-black font-black flex items-center justify-center cursor-pointer transition-all ${
                       isSelected 
                         ? 'bg-emerald-400 text-black scale-105 shadow-[1px_1px_0px_rgba(0,0,0,1)]' 
@@ -133,128 +159,162 @@ export default function EventModal({
             </div>
           </div>
 
-          {/* HORA Y TÍTULO DE LA ACTIVIDAD - SELECTOR ESTILO RETRO-COMIC */}
+          {/* HORA Y CONCEPTO */}
           <div className="flex gap-2 items-end">
             <div className="flex flex-col">
-              <label className="text-[10px] font-black uppercase text-black mb-1">Hora:</label>
-              <div className="flex gap-1 items-center">
-                <select
-                  value={newTaskTime.split(':')[0] || '09'}
-                  onChange={(e) => {
-                    const h = e.target.value;
-                    const m = newTaskTime.split(':')[1] || '00';
-                    setNewTaskTime(`${h}:${m}`);
-                  }}
-                  className="p-2.5 bg-white border-3 border-black rounded-xl text-xs font-black uppercase focus:outline-none shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
-                >
-                  {Array.from({ length: 24 }).map((_, i) => {
-                    const hStr = String(i).padStart(2, '0');
-                    return <option key={hStr} value={hStr}>{hStr}</option>;
-                  })}
-                </select>
-                <span className="font-black text-black text-sm">:</span>
-                <select
-                  value={newTaskTime.split(':')[1] || '00'}
-                  onChange={(e) => {
-                    const m = e.target.value;
-                    const h = newTaskTime.split(':')[0] || '09';
-                    setNewTaskTime(`${h}:${m}`);
-                  }}
-                  className="p-2.5 bg-white border-3 border-black rounded-xl text-xs font-black uppercase focus:outline-none shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
-                >
-                  {['00', '10', '15', '20', '30', '40', '45', '50'].map((mStr) => (
-                    <option key={mStr} value={mStr}>{mStr}</option>
-                  ))}
-                </select>
+              <label className="text-[10px] font-black uppercase text-black mb-1">HORA:</label>
+              <div className="flex gap-1 items-center bg-white border-3 border-black rounded-xl p-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                <input
+                  type="time"
+                  value={newTaskTime || ''}
+                  onChange={(e) => setNewTaskTime && setNewTaskTime(e.target.value)}
+                  className="bg-transparent font-black text-xs uppercase focus:outline-none cursor-pointer"
+                />
               </div>
             </div>
 
             <div className="flex flex-col flex-1">
-              <label className="text-[10px] font-black uppercase text-black mb-1">Concepto / Actividad:</label>
+              <label className="text-[10px] font-black uppercase text-black mb-1">CONCEPTO / ACTIVIDAD:</label>
               <input
                 type="text"
-                placeholder="Ej. Cita en la SEV. Pago de Renta.."
-                value={newTaskText}
-                onChange={(e) => setNewTaskText(e.target.value)}
-                className="p-2.5 bg-white border-3 border-black rounded-xl text-xs font-bold uppercase focus:outline-none"
+                placeholder="Ej. PAGO COMIDA DOÑA JULIA"
+                value={newTaskText || ''}
+                onChange={(e) => setNewTaskText && setNewTaskText(e.target.value)}
+                className="p-2.5 bg-white border-3 border-black rounded-xl text-xs font-bold uppercase focus:outline-none shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-black"
               />
             </div>
           </div>
 
-          <div className="border-2 border-black rounded-xl p-2.5 bg-white flex flex-col gap-2">
-            <label className="flex items-center gap-2 cursor-pointer font-black text-xs uppercase">
+          {/* SECCIÓN PAGOS PROGRAMADOS */}
+          <div className="border-3 border-black rounded-xl p-3 bg-white flex flex-col gap-2.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+            <label className="flex items-center gap-2 cursor-pointer font-black text-xs uppercase text-black">
               <input 
                 type="checkbox" 
-                checked={esPagoProgramado}
-                onChange={(e) => setEsPagoProgramado(e.target.checked)}
+                checked={!!esPagoProgramado}
+                onChange={(e) => setEsPagoProgramado && setEsPagoProgramado(e.target.checked)}
                 className="w-4 h-4 accent-black cursor-pointer"
               />
-              <span>📅 ¿Es un pago programado?</span>
+              <span>📅 ¿ES UN PAGO PROGRAMADO?</span>
             </label>
 
             {esPagoProgramado && (
-              <div className="flex flex-col gap-2.5 pt-2 border-t border-black/20">
-                <div className="flex gap-2">
+              <div className="flex flex-col gap-2.5 pt-2 border-t-2 border-black">
+                
+                {/* MONTO Y GASTO / INGRESO */}
+                <div className="flex gap-2 items-center">
                   <input 
                     type="number"
                     placeholder="Monto ($)"
-                    value={montoPago}
-                    onChange={(e) => setMontoPago(e.target.value)}
-                    className="flex-1 border-2 border-black rounded-xl px-2.5 py-1.5 text-xs font-bold bg-amber-50 focus:outline-none"
-                  />
-                  <select 
-                    value={tipoMovimiento}
-                    onChange={(e) => setTipoMovimiento(e.target.value)}
-                    className="border-2 border-black rounded-xl px-2.5 py-1.5 text-xs font-bold bg-amber-50 focus:outline-none uppercase"
-                  >
-                    <option value="expense">Gasto (Pago)</option>
-                    <option value="income">Ingreso (Cobro)</option>
-                  </select>
-                </div>
-
-                <div className="flex gap-2">
-                  <input 
-                    type="text"
-                    placeholder="Categoría (Ej. Renta)"
-                    value={categoriaPago}
-                    onChange={(e) => setCategoriaPago(e.target.value)}
-                    className="flex-1 border-2 border-black rounded-xl px-2.5 py-1.5 text-xs font-bold bg-amber-50 uppercase focus:outline-none"
+                    value={montoPago || ''}
+                    onChange={(e) => setMontoPago && setMontoPago(e.target.value)}
+                    className="flex-1 border-2 border-black rounded-xl px-2.5 py-1.5 text-xs font-bold bg-amber-50 text-black focus:outline-none shadow-[2px_2px_0px_rgba(0,0,0,1)]"
                   />
 
-                  <select 
-                    value={frecuenciaPago}
-                    onChange={(e) => setFrecuenciaPago(e.target.value)}
-                    className="w-40 border-2 border-black rounded-xl px-2.5 py-1.5 text-xs font-bold bg-amber-50 focus:outline-none uppercase"
-                  >
-                    <option value="single">🎯 Eventual</option>
-                    <option value="monthly">🔁 Recurrente</option>
-                  </select>
+                  <div className="flex border-2 border-black rounded-xl overflow-hidden shadow-[2px_2px_0px_rgba(0,0,0,1)] shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setTipoMovimiento && setTipoMovimiento('expense')}
+                      className={`px-2.5 py-1.5 text-[10px] font-black uppercase cursor-pointer transition-all ${
+                        tipoMovimiento === 'expense'
+                          ? 'bg-rose-400 text-black border-r-2 border-black'
+                          : 'bg-white text-stone-600 border-r-2 border-black hover:bg-rose-100'
+                      }`}
+                    >
+                      💸 GASTO
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTipoMovimiento && setTipoMovimiento('income')}
+                      className={`px-2.5 py-1.5 text-[10px] font-black uppercase cursor-pointer transition-all ${
+                        tipoMovimiento === 'income'
+                          ? 'bg-emerald-400 text-black'
+                          : 'bg-white text-stone-600 hover:bg-emerald-100'
+                      }`}
+                    >
+                      💰 INGRESO
+                    </button>
+                  </div>
                 </div>
+
+                {/* CATEGORÍA */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-black uppercase text-black">Categoría:</label>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {categoriasDisponibles.map((cat) => (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setCategoriaPago && setCategoriaPago(cat)}
+                        className={`px-2 py-1 rounded-lg text-[10px] font-black border-2 border-black transition-all cursor-pointer ${
+                          categoriaPago === cat
+                            ? 'bg-amber-400 text-black shadow-[1px_1px_0px_rgba(0,0,0,1)] scale-105'
+                            : 'bg-white text-stone-600 hover:bg-amber-100'
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* FRECUENCIA */}
+                {setFrecuenciaPago && (
+                  <div className="flex gap-2 items-center justify-between border-t border-stone-200 pt-2">
+                    <span className="text-[10px] font-black uppercase text-black">Frecuencia:</span>
+                    <div className="flex border-2 border-black rounded-xl overflow-hidden shadow-[2px_2px_0px_rgba(0,0,0,1)] shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setFrecuenciaPago('single')}
+                        className={`px-2.5 py-1 text-[10px] font-black uppercase cursor-pointer transition-all ${
+                          frecuenciaPago === 'single'
+                            ? 'bg-amber-400 text-black border-r-2 border-black'
+                            : 'bg-white text-stone-600 border-r-2 border-black hover:bg-amber-100'
+                        }`}
+                      >
+                        🎯 ÚNICO
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFrecuenciaPago('monthly')}
+                        className={`px-2.5 py-1 text-[10px] font-black uppercase cursor-pointer transition-all ${
+                          frecuenciaPago === 'monthly'
+                            ? 'bg-amber-400 text-black'
+                            : 'bg-white text-stone-600 hover:bg-amber-100'
+                        }`}
+                      >
+                        🔁 MENSUAL
+                      </button>
+                    </div>
+                  </div>
+                )}
+
               </div>
             )}
           </div>
 
+          {/* BOTONES ACCIONES */}
           <div className="flex gap-2 pt-1">
             <button
               type="button"
-              onClick={() => setIsVoiceOpen(true)}
-              className="flex-1 py-2.5 bg-white border-3 border-black rounded-xl font-black text-xs uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all cursor-pointer"
+              onClick={() => setIsVoiceOpen && setIsVoiceOpen(true)}
+              className="flex-1 py-2.5 bg-white border-3 border-black rounded-xl font-black text-xs uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all cursor-pointer hover:bg-stone-100 text-black"
             >
-              🎙️ {aMayusculas('Dictar')}
+              🎙️ TECLADO/NOTA DE VOZ
             </button>
             <button
               type="button"
               onClick={handleAddTask}
-              className="flex-1 py-2.5 bg-emerald-400 hover:bg-emerald-300 border-3 border-black rounded-xl font-black text-xs uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all cursor-pointer"
+              className="flex-1 py-2.5 bg-emerald-400 hover:bg-emerald-300 border-3 border-black rounded-xl font-black text-xs uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all cursor-pointer text-black"
             >
-              💾 {aMayusculas('Guardar Actividad')}
+              💾 GUARDAR ACTIVIDAD
             </button>
           </div>
         </div>
 
+        {/* LISTA DE ACTIVIDADES CREADAS */}
         <div className="space-y-2 max-h-56 overflow-y-auto pt-2">
-          {(dayTasks[selectedDate] || []).map((task) => {
-            const semaforo = getSemaforoVisual(task);
+          {activeTasks.map((task) => {
+            const semaforo = getSemaforoVisual ? getSemaforoVisual(task) : { clase: 'bg-stone-100 text-black', badge: 'PENDIENTE' };
 
             return (
               <div 
@@ -276,10 +336,10 @@ export default function EventModal({
 
                   {task.is_pago && (
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="bg-sky-100 border border-black px-2 py-0.5 rounded text-[10px] font-black uppercase">
+                      <span className="bg-sky-100 border border-black px-2 py-0.5 rounded text-[10px] font-black uppercase text-black">
                         🏷️ {task.category}
                       </span>
-                      <span className="bg-sky-100 border border-black px-2 py-0.5 rounded text-[10px] font-black">
+                      <span className="bg-sky-100 border border-black px-2 py-0.5 rounded text-[10px] font-black text-black">
                         ${task.monto?.toLocaleString()} ({task.transaction_type === 'expense' ? 'Pago' : 'Cobro'})
                       </span>
                       <span className={`border px-2 py-0.5 rounded text-[10px] font-black uppercase ${semaforo.clase}`}>
@@ -292,18 +352,17 @@ export default function EventModal({
                 <div className="flex items-center gap-3 shrink-0 ml-auto sm:ml-2">
                   <button 
                     type="button"
-                    onClick={() => handleToggleComplete(task)}
+                    onClick={() => handleToggleComplete && handleToggleComplete(task)}
                     className={`px-2.5 py-1 border-2 border-black rounded-xl font-black text-[10px] uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer transition-all ${
-                      task.is_completed ? 'bg-amber-300 hover:bg-amber-400' : 'bg-green-300 hover:bg-green-400'
+                      task.is_completed ? 'bg-amber-300 hover:bg-amber-400 text-black' : 'bg-green-300 hover:bg-green-400 text-black'
                     }`}
-                    title={task.is_completed ? "Desmarcar pago" : "Pagar y registrar en finanzas"}
                   >
                     {task.is_completed ? '↩️ Reabrir' : '💳 Pagar al Instante'}
                   </button>
 
                   <button 
                     type="button"
-                    onClick={() => handleDeleteTask(task.id)}
+                    onClick={() => handleDeleteTask && handleDeleteTask(task.id)}
                     className="text-rose-600 font-black cursor-pointer hover:scale-125 transition-transform text-base"
                     title="Eliminar"
                   >
@@ -314,7 +373,7 @@ export default function EventModal({
             );
           })}
 
-          {(!dayTasks[selectedDate] || dayTasks[selectedDate].length === 0) && (
+          {activeTasks.length === 0 && (
             <p className="text-center text-xs font-black text-amber-950 uppercase pt-2">
               No hay actividades o pagos programados
             </p>

@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { aMayusculas } from '../../../utils/mayusculas.js';
 import { obtenerDeStorage, guardarEnStorage } from '../../../utils/storage.js';
 
-export default function CanvasNotesScreen() {
+export default function CanvasNotesScreen({ activeUser, auditorMode, isMasterAuditor, usersList = [] }) {
+  // Clave de almacenamiento base, se puede dinamizar si deseas aislar por usuario localmente o filtrar por usuario
   const [notes, setNotes] = useState(() => obtenerDeStorage('family_canvas_notes', []));
   const [textInput, setTextInput] = useState('');
   const [noteTitle, setNoteTitle] = useState('');
@@ -14,6 +15,19 @@ export default function CanvasNotesScreen() {
   const canvasRef = useRef(null);
   const isDrawing = useRef(false);
   const lastPos = useRef({ x: 0, y: 0 });
+
+  // 🌟 RESOLVER EL NOMBRE O ID DEL USUARIO AUDITADO ACTUAL
+  const auditedDisplayName = React.useMemo(() => {
+    if (auditorMode && activeUser) {
+      if (typeof activeUser === 'object' && activeUser !== null) {
+        return `${activeUser.nombre || ''} ${activeUser.apellido_paterno || ''}`.trim();
+      }
+      const found = usersList.find(u => u.id === activeUser || (u.nombre || '').toUpperCase().includes(String(activeUser).toUpperCase()));
+      if (found) return `${found.nombre || ''} ${found.apellido_paterno || ''}`.trim();
+      return String(activeUser);
+    }
+    return 'GENERAL';
+  }, [auditorMode, activeUser, usersList]);
 
   // Inicializar canvas y redimensionar correctamente
   useEffect(() => {
@@ -99,7 +113,8 @@ export default function CanvasNotesScreen() {
       title: aMayusculas(noteTitle || 'Nota Rápida'),
       text: textInput,
       drawing: drawingDataUrl,
-      date: new Date().toLocaleDateString('es-MX')
+      date: new Date().toLocaleDateString('es-MX'),
+      auditedUser: auditedDisplayName // Etiquetar con el usuario auditado o actual
     };
 
     const updatedNotes = [newNote, ...notes];
@@ -120,6 +135,14 @@ export default function CanvasNotesScreen() {
     guardarEnStorage('family_canvas_notes', updatedNotes);
   };
 
+  // Filtrar notas según el Modo Dios activo
+  const filteredNotes = notes.filter(note => {
+    if (auditorMode && auditedDisplayName !== 'GENERAL') {
+      return note.auditedUser === auditedDisplayName;
+    }
+    return true; // En modo normal o si no hay distinción
+  });
+
   return (
     <div className="min-h-screen bg-[#Fef8e7] p-4 md:p-8 font-mono text-black pb-24 select-none">
       <div className="max-w-4xl mx-auto space-y-6">
@@ -129,7 +152,7 @@ export default function CanvasNotesScreen() {
           <div className="w-14 h-14 bg-amber-400 border-2 border-black rounded-full flex items-center justify-center shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-2xl shrink-0">
             📝
           </div>
-          <div>
+          <div className="flex-1">
             <h1 className="text-xl font-black uppercase tracking-tight text-black">
               {aMayusculas('Notas y Dibujo Libre')}
             </h1>
@@ -138,6 +161,12 @@ export default function CanvasNotesScreen() {
             </p>
           </div>
         </header>
+
+        {auditorMode && (
+          <div className="w-full bg-red-500 text-white text-center font-black text-xs py-2 border-4 border-black rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] uppercase tracking-wide">
+            🔍 Modo Dios (Auditoría de Notas) Activo - Auditando a: {auditedDisplayName}
+          </div>
+        )}
 
         {/* MENSAJE DE ÉXITO */}
         {savedMessage && (
@@ -230,12 +259,19 @@ export default function CanvasNotesScreen() {
 
         {/* LISTA DE NOTAS GUARDADAS */}
         <div className="space-y-4">
-          <h2 className="text-sm font-black uppercase tracking-wider text-stone-700">
-            {aMayusculas('Notas Guardadas en Pantalla')}
-          </h2>
+          <div className="flex justify-between items-center flex-wrap gap-2">
+            <h2 className="text-sm font-black uppercase tracking-wider text-stone-700">
+              {aMayusculas('Notas Guardadas en Pantalla')}
+            </h2>
+            {auditorMode && (
+              <span className="bg-amber-300 border-2 border-black px-2.5 py-0.5 rounded-xl text-xs font-black uppercase">
+                Mostrando notas de: {auditedDisplayName}
+              </span>
+            )}
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {notes.map((note) => (
+            {filteredNotes.map((note) => (
               <div key={note.id} className="bg-white border-4 border-black p-5 rounded-3xl shadow-[5px_5px_0px_0px_rgba(0,0,0,1)] space-y-3 flex flex-col justify-between">
                 <div className="space-y-2">
                   <div className="flex justify-between items-start gap-2">
@@ -244,6 +280,12 @@ export default function CanvasNotesScreen() {
                       {note.date}
                     </span>
                   </div>
+
+                  {note.auditedUser && (
+                    <div className="text-[9px] font-black uppercase bg-stone-100 border border-black px-2 py-0.5 rounded inline-block">
+                      👤 {note.auditedUser}
+                    </div>
+                  )}
 
                   {note.text && (
                     <p className="text-xs font-bold text-stone-800 uppercase bg-stone-50 p-3 rounded-xl border-2 border-black">
@@ -268,9 +310,9 @@ export default function CanvasNotesScreen() {
               </div>
             ))}
 
-            {notes.length === 0 && (
+            {filteredNotes.length === 0 && (
               <div className="col-span-full py-12 text-center bg-white border-4 border-black rounded-3xl shadow-[5px_5px_0px_0px_rgba(0,0,0,1)] text-stone-400 font-black text-xs uppercase">
-                {aMayusculas('No hay notas guardadas todavía.')}
+                {aMayusculas('No hay notas guardadas todavía para este usuario.')}
               </div>
             )}
           </div>
