@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, Type } from '@google/genai';
 
 const fileToGenerativePart = async (file) => {
   return new Promise((resolve, reject) => {
@@ -62,31 +62,39 @@ export const scanTicketOCR = async (file) => {
   const ai = new GoogleGenAI({ apiKey });
   const imagePart = await fileToGenerativePart(file);
 
-  // 🤖 PROMPT MAESTRO PARA EL DESGLOSE DEL TICKET
   const prompt = `
-    Analiza esta imagen de un ticket o recibo de compra. Extrae la información y devuélvela en un formato JSON estricto (sin texto adicional ni formato markdown extra) con exactamente estas tres llaves:
-    1. "amount": número flotante con el total exacto a pagar (ej: 150.50). Si no encuentras el total, pon 0.
-    2. "concept": el nombre del comercio, establecimiento o una descripción breve del gasto (en MAYÚSCULAS).
-    3. "category": una categoría sugerida de esta lista exacta: ALIMENTOS, TRANSPORTE, SERVICIOS, ENTRETENIMIENTO, SALUD, SUPERMERCADO, HOGAR, OTROS (en MAYÚSCULAS).
-    
-    Ejemplo de respuesta esperada:
-    {"amount": 250.00, "concept": "SUPERAMA", "category": "SUPERMERCADO"}
+    Analiza esta imagen de un ticket o recibo de compra. Extrae la información con precisión:
+    1. El total exacto a pagar (amount).
+    2. El nombre del comercio o establecimiento en MAYÚSCULAS (concept).
+    3. Una categoría sugerida estrictamente de esta lista: ALIMENTOS, TRANSPORTE, SERVICIOS, ENTRETENIMIENTO, SALUD, SUPERMERCADO, HOGAR, OTROS (category).
   `;
 
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: [prompt, imagePart],
+      config: {
+        // 🌟 FORZAMOS A LA IA A DEVOLVER UN JSON PURO Y ESTRUCTURADO
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            amount: { type: Type.NUMBER, description: "Total exacto a pagar en número flotante" },
+            concept: { type: Type.STRING, description: "Nombre del comercio en MAYÚSCULAS" },
+            category: { type: Type.STRING, description: "Categoría exacta permitida" }
+          },
+          required: ['amount', 'concept', 'category']
+        }
+      }
     });
 
-    const textResponse = response.text ? response.text.trim() : '';
-    const cleanedJsonText = textResponse.replace(/```json/g, '').replace(/```/g, '').trim();
-    const parsedData = JSON.parse(cleanedJsonText);
+    const textResponse = response.text ? response.text.trim() : '{}';
+    const parsedData = JSON.parse(textResponse);
 
     return {
       amount: Number(parsedData.amount) || 0,
-      concept: parsedData.concept || 'COMPRA CON TICKET',
-      category: parsedData.category || 'MERCADO',
+      concept: parsedData.concept ? parsedData.concept.toUpperCase() : 'COMPRA CON TICKET',
+      category: parsedData.category ? parsedData.category.toUpperCase() : 'OTROS',
       rawText: textResponse
     };
 
