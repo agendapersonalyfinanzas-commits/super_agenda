@@ -658,9 +658,7 @@ export default function SIdenoteCanvas({ onClose, onSave }) {
     canvasRef.current.setPointerCapture(e.pointerId);
     const point = getCanvasPoint(e);
 
-    // 🌟 SELECCIÓN DIRECTA Y MOVIMIENTO DE ELEMENTOS SIN NECESIDAD DE APRETAR EL BOTÓN 'MOVER'
     if (tool !== 'pan') {
-      // 1. Si hay un elemento ya seleccionado, verificar si tocó sus tiradores de cambio de tamaño o su área
       if (selectedStrokeIndex !== null && strokes[selectedStrokeIndex] && !strokes[selectedStrokeIndex].locked) {
         const stroke = strokes[selectedStrokeIndex];
         const box = getStrokeBoundingBox(stroke);
@@ -700,7 +698,6 @@ export default function SIdenoteCanvas({ onClose, onSave }) {
         }
       }
 
-      // 2. Si tocó CUALQUIER elemento existente en el lienzo (dibujo, texto, forma)
       let foundIndex = null;
       for (let i = strokes.length - 1; i >= 0; i--) {
         if (strokes[i].hidden || strokes[i].locked) continue;
@@ -711,7 +708,6 @@ export default function SIdenoteCanvas({ onClose, onSave }) {
         }
       }
 
-      // Si tocó un elemento, se selecciona automáticamente y comienza a moverlo al instante
       if (foundIndex !== null && !strokes[foundIndex].locked) {
         setSelectedStrokeIndex(foundIndex);
         const stroke = strokes[foundIndex];
@@ -726,7 +722,6 @@ export default function SIdenoteCanvas({ onClose, onSave }) {
       }
     }
 
-    // HERRAMIENTA TEXTO
     if (tool === 'text') {
       let foundIndex = null;
       for (let i = strokes.length - 1; i >= 0; i--) {
@@ -757,7 +752,6 @@ export default function SIdenoteCanvas({ onClose, onSave }) {
       return;
     }
 
-    // HERRAMIENTA BOTE DE PINTURA (FILL)
     if (tool === 'fill') {
       let foundIndex = null;
       for (let i = strokes.length - 1; i >= 0; i--) {
@@ -789,7 +783,6 @@ export default function SIdenoteCanvas({ onClose, onSave }) {
       return;
     }
 
-    // Si tocó un punto vacío del lienzo, deselecciona y comienza a dibujar normalmente
     setSelectedStrokeIndex(null);
     isDrawing.current = true;
     currentStroke.current = [point];
@@ -798,6 +791,14 @@ export default function SIdenoteCanvas({ onClose, onSave }) {
   const handlePointerMove = (e) => {
     e.preventDefault();
     const point = getCanvasPoint(e);
+
+    if (isPanning.current) {
+      setOffset({
+        x: e.clientX - startPanPos.current.x,
+        y: e.clientY - startPanPos.current.y
+      });
+      return;
+    }
 
     if (activeTransform.current !== null) {
       const { type, strokeIdx, startX, startY, initialStroke, initialBox, corner } = activeTransform.current;
@@ -845,554 +846,529 @@ export default function SIdenoteCanvas({ onClose, onSave }) {
             newBox.width = Math.max(20, initialBox.width + dx);
             newBox.height = Math.max(20, initialBox.height + dy);
           } else if (corner === 'resize-BL') {
-            const newW = Math.max(20, initialBox.width - dx);
-            newBox.x = initialBox.x + (initialBox.width - newW);
-            newBox.width = newW;
+            newBox.width = Math.max(20, initialBox.width - dx);
             newBox.height = Math.max(20, initialBox.height + dy);
+            newBox.x = initialBox.x + dx;
           } else if (corner === 'resize-TR') {
             newBox.width = Math.max(20, initialBox.width + dx);
-            const newH = Math.max(20, initialBox.height - dy);
-            newBox.y = initialBox.y + (initialBox.height - newH);
-            newBox.height = newH;
+            newBox.height = Math.max(20, initialBox.height - dy);
+            newBox.y = initialBox.y + dy;
           } else if (corner === 'resize-TL') {
-            const newW = Math.max(20, initialBox.width - dx);
-            newBox.x = initialBox.x + (initialBox.width - newW);
-            newBox.width = newW;
-            const newH = Math.max(20, initialBox.height - dy);
-            newBox.y = initialBox.y + (initialBox.height - newH);
-            newBox.height = newH;
+            newBox.width = Math.max(20, initialBox.width - dx);
+            newBox.height = Math.max(20, initialBox.height - dy);
+            newBox.x = initialBox.x + dx;
+            newBox.y = initialBox.y + dy;
           }
 
-          const scaleX = initialBox.width === 0 ? 1 : newBox.width / initialBox.width;
-          const scaleY = initialBox.height === 0 ? 1 : newBox.height / initialBox.height;
-
-          if (stroke.isText) {
-            stroke.x = newBox.x; 
-            stroke.y = newBox.y + newBox.height;
-            stroke.size = Math.max(2, Math.round((initialStroke.size || 4) * scaleY));
-          } else if (stroke.isVector && stroke.nodes) {
-            stroke.nodes.forEach(n => {
-              n.x = newBox.x + (n.x - initialBox.x) * scaleX;
-              n.y = newBox.y + (n.y - initialBox.y) * scaleY;
-            });
-          } else if (stroke.isShape) {
+          if (stroke.isShape) {
             const t = stroke.shapeType;
             if (t === 'circle') {
+              stroke.radius = Math.max(10, newBox.width / 2);
               stroke.cx = newBox.x + newBox.width / 2;
               stroke.cy = newBox.y + newBox.height / 2;
-              stroke.radius = Math.min(newBox.width, newBox.height) / 2;
             } else if (t === 'rectangle' || t === 'ellipse' || t === 'diamond' || t === 'star' || t === 'hexagon' || t === 'arrow' || t === 'heart') {
-              stroke.x = newBox.x; stroke.y = newBox.y;
-              stroke.width = newBox.width; stroke.height = newBox.height;
+              stroke.x = newBox.x;
+              stroke.y = newBox.y;
+              stroke.width = newBox.width;
+              stroke.height = newBox.height;
             }
-          } else if (stroke.points) {
-            stroke.points.forEach(p => {
-              p.x = newBox.x + (p.x - initialBox.x) * scaleX;
-              p.y = newBox.y + (p.y - initialBox.y) * scaleY;
-            });
           }
         }
 
         updated[strokeIdx] = stroke;
         return updated;
       });
-      redrawCanvas();
-      return;
-    }
-
-    if (isPanning.current) {
-      setOffset({
-        x: e.clientX - startPanPos.current.x,
-        y: e.clientY - startPanPos.current.y
-      });
       return;
     }
 
     if (!isDrawing.current) return;
     currentStroke.current.push(point);
-
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    ctx.save();
-    ctx.setTransform(scale, 0, 0, scale, offset.x, offset.y);
-    ctx.strokeStyle = tool === 'eraser' ? '#FEF8E7' : brushColor;
-    
-    const dynamicSize = tool === 'eraser' ? brushSize * 6 : brushSize * (0.5 + point.pressure);
-    ctx.lineWidth = dynamicSize;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-
-    const pts = currentStroke.current;
-    if (pts.length >= 2) {
-      ctx.beginPath();
-      ctx.moveTo(pts[pts.length - 2].x, pts[pts.length - 2].y);
-      ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
-      ctx.stroke();
-    }
-    ctx.restore();
+    redrawCanvas();
   };
 
-  const handlePointerUp = (e) => {
-    e.preventDefault();
-    if (activeTransform.current !== null) {
-      activeTransform.current = null;
-      return;
-    }
-
-    if (isPanning.current) {
-      isPanning.current = false;
-      return;
-    }
+  const handlePointerUp = () => {
+    isPanning.current = false;
+    activeTransform.current = null;
 
     if (!isDrawing.current) return;
     isDrawing.current = false;
 
-    const points = currentStroke.current;
-    if (points.length > 1) {
-      const detectedShape = detectSmartShape(points);
-      const avgPressure = points.reduce((acc, p) => acc + p.pressure, 0) / points.length;
-      
-      let newStroke = null;
-      if (tool === 'vector') {
-        newStroke = convertToVectorStroke(points, brushColor, brushSize);
-      } else if (detectedShape) {
-        newStroke = { ...detectedShape, color: brushColor, size: brushSize };
-      } else {
-        newStroke = {
-          isVector: false,
-          isShape: false,
-          points: [...points],
-          color: tool === 'eraser' ? '#FEF8E7' : brushColor,
-          size: tool === 'eraser' ? brushSize * 6 : brushSize * (0.5 + avgPressure)
-        };
+    if (currentStroke.current.length > 0) {
+      let newStrokeObj = null;
+
+      if (tool === 'eraser') {
+        const pts = currentStroke.current;
+        setStrokes(prev => prev.filter(stroke => {
+          const box = getStrokeBoundingBox(stroke);
+          return !pts.some(p => p.x >= box.x - 10 && p.x <= box.x + box.width + 10 && p.y >= box.y - 10 && p.y <= box.y + box.height + 10);
+        }));
+        currentStroke.current = [];
+        return;
       }
 
-      if (newStroke) {
-        const namedStroke = {
-          ...newStroke,
-          id: Date.now() + Math.random(),
-          name: tool === 'eraser' ? 'Borrador' : newStroke.shapeType ? `Forma: ${newStroke.shapeType}` : `Trazo Libre #${strokes.length + 1}`,
-          hidden: false,
-          locked: false
-        };
-        setStrokes(prev => [...prev, namedStroke]);
+      if (tool === 'vector') {
+        newStrokeObj = convertToVectorStroke(currentStroke.current, brushColor, brushSize);
+        if (newStrokeObj) {
+          newStrokeObj.id = Date.now() + Math.random();
+          newStrokeObj.name = `Vectorial (${strokes.length + 1})`;
+          newStrokeObj.hidden = false;
+          newStrokeObj.locked = false;
+        }
+      } else {
+        const smartShape = detectSmartShape(currentStroke.current);
+        if (smartShape) {
+          newStrokeObj = {
+            ...smartShape,
+            id: Date.now() + Math.random(),
+            name: `Forma Inteligente (${smartShape.shapeType})`,
+            color: brushColor,
+            size: brushSize,
+            hidden: false,
+            locked: false
+          };
+        } else {
+          newStrokeObj = {
+            isText: false,
+            isVector: false,
+            points: [...currentStroke.current],
+            color: brushColor,
+            size: brushSize,
+            id: Date.now() + Math.random(),
+            name: `Trazo libre (${strokes.length + 1})`,
+            hidden: false,
+            locked: false
+          };
+        }
+      }
+
+      if (newStrokeObj) {
+        setStrokes(prev => [...prev, newStrokeObj]);
         setRedoStack([]);
       }
     }
     currentStroke.current = [];
-    redrawCanvas();
   };
 
+  // --- BOTONES DE ACCIÓN (UNDO / REDO / EXPORTAR / IA) ---
   const handleUndo = () => {
     if (strokes.length === 0) return;
     const last = strokes[strokes.length - 1];
     setStrokes(prev => prev.slice(0, -1));
-    setRedoStack(prev => [last, ...prev]);
+    setRedoStack(prev => [...prev, last]);
     setSelectedStrokeIndex(null);
   };
 
   const handleRedo = () => {
     if (redoStack.length === 0) return;
-    const next = redoStack[0];
-    setRedoStack(prev => prev.slice(1));
-    setStrokes(prev => [...prev, next]);
+    const item = redoStack[redoStack.length - 1];
+    setRedoStack(prev => prev.slice(0, -1));
+    setStrokes(prev => [...prev, item]);
   };
 
-  const handleAiTranscription = async () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    if (!apiKey) {
-      alert('Falta configurar la llave VITE_GEMINI_API_KEY en tu archivo .env');
-      return;
-    }
-
-    setIsAnalyzing(true);
-    try {
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-      const base64Data = dataUrl.split(',')[1];
-      const ai = new GoogleGenAI({ apiKey });
-      const prompt = `Analiza este lienzo digital con notas escritas a mano, diagramas, esquemas o formas geométricas. Extrae todo el texto legible o interpreta el contenido y devuélvelo transcrito en texto digital limpio y en MAYÚSCULAS.`;
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: [prompt, { inlineData: { data: base64Data, mimeType: 'image/jpeg' } }],
-      });
-
-      const text = response.text ? response.text.trim() : 'No se detectó texto en el trazo.';
-      setAiTranscript(text);
-      setShowAiModal(true);
-    } catch (error) {
-      console.error('Error al transcribir:', error);
-      if (error?.status === 503 || error?.error?.code === 503) {
-        alert('El servicio de IA de Google está ocupado temporalmente. Inténtalo de nuevo en unos segundos.');
-      } else {
-        alert('La IA no pudo interpretar el trazo.');
-      }
-    } finally {
-      setIsAnalyzing(false);
+  const handleClear = () => {
+    if (window.confirm("¿Seguro que deseas limpiar todo el lienzo?")) {
+      setStrokes([]);
+      setRedoStack([]);
+      setSelectedStrokeIndex(null);
     }
   };
 
   const handleSave = () => {
     const canvas = canvasRef.current;
-    const dataUrl = canvas.toDataURL('image/png');
-    onSave(dataUrl, aiTranscript || 'OBRA S-PEN ESTUDIO');
+    if (!canvas) return;
+    setSelectedStrokeIndex(null);
+    setTimeout(() => {
+      redrawCanvas();
+      const dataUrl = canvas.toDataURL('image/png');
+      onSave(dataUrl);
+    }, 50);
   };
 
-  // CAMBIO DE COLOR EN TIEMPO REAL
-  const changeColor = (color) => {
-    setBrushColor(color);
-    if (selectedStrokeIndex !== null && strokes[selectedStrokeIndex]) {
-      setStrokes(prev => {
-        const updated = [...prev];
-        updated[selectedStrokeIndex] = { ...updated[selectedStrokeIndex], color };
-        return updated;
-      });
-    }
-  };
+  // --- INTEGRACIÓN GEMINI AI ---
+  const analyzeWithAI = async () => {
+    setIsAnalyzing(true);
+    setShowAiModal(true);
+    try {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const dataUrl = canvas.toDataURL('image/png');
+      const base64Data = dataUrl.split(',')[1];
 
-  // CAMBIO DE TAMAÑO EN TIEMPO REAL
-  const changeSize = (size) => {
-    setBrushSize(size);
-    if (selectedStrokeIndex !== null && strokes[selectedStrokeIndex]) {
-      setStrokes(prev => {
-        const updated = [...prev];
-        updated[selectedStrokeIndex] = { ...updated[selectedStrokeIndex], size };
-        return updated;
+      const ai = new GoogleGenAI({ apiKey: process.env.REACT_APP_GEMINI_API_KEY || '' });
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [
+          {
+            inlineData: {
+              data: base64Data,
+              mimeType: 'image/png'
+            }
+          },
+          'Analiza este dibujo o notas hechas a mano en la Super Agenda. Transcribe cualquier texto que encuentres, resume los diagramas o notas y ofrece sugerencias útiles estructuradas.'
+        ]
       });
+
+      setAiTranscript(response.text || 'No se pudo generar el análisis.');
+    } catch (err) {
+      console.error("Error analizando con IA:", err);
+      setAiTranscript('Error al conectar con la Inteligencia Artificial. Verifica tu clave de API.');
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#Fef8e7] font-mono select-none h-screen w-screen overflow-hidden">
+    <div className="fixed inset-0 z-50 bg-[#FEF8E7] overflow-hidden font-mono select-none">
       
-      {/* 🌟 BARRA DE HERRAMIENTAS SUPERIOR - TOTALMENTE ARRASTRABLE Y AUTO-AJUSTABLE ⠿ */}
+      {/* 🌟 CANVAS PRINCIPAL CON SOPORTE DE PUNTERO MULTIDISPOSITIVO */}
+      <canvas
+        ref={canvasRef}
+        style={{ touchAction: 'none' }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        className="absolute inset-0 w-full h-full cursor-crosshair z-0"
+      />
+
+      {/* 🌟 BARRA SUPERIOR DE ACCESOS RÁPIDOS Y ESTADOS */}
       {showUI && (
-        <div
-          style={{ left: `${toolbarPos.x}px`, top: `${toolbarPos.y}px` }}
-          className="absolute z-50 flex flex-wrap items-center bg-white/95 backdrop-blur-md border-4 border-black px-4 py-2.5 rounded-2xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] gap-2 max-w-[calc(100vw-2rem)]"
+        <div 
+          style={{ transform: `translate(${toolbarPos.x}px, ${toolbarPos.y}px)` }}
+          className="absolute z-30 bg-white border-4 border-black rounded-2xl p-2.5 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-wrap items-center gap-3 cursor-move"
+          onPointerDown={(e) => handleStartPanelDrag('toolbar', e)}
         >
-          {/* MANIJA DE ARRASTRE */}
-          <div
-            onPointerDown={(e) => handleStartPanelDrag('toolbar', e)}
-            className="cursor-grab active:cursor-grabbing p-1 hover:bg-stone-200 rounded-lg flex items-center gap-1.5 touch-none select-none"
-            title="Mantén presionado con el lápiz o ratón para mover las herramientas"
-          >
-            <span className="text-base font-black text-stone-500">⠿</span>
-            <span className="text-xl">✒️</span>
-            <h3 className="font-black uppercase text-xs sm:text-sm text-black hidden sm:block">
-              {aMayusculas('Estudio S-Pen Pro')}
-            </h3>
-          </div>
-
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <button type="button" onClick={() => { setTool('pen'); setSelectedStrokeIndex(null); }} className={`px-3 py-1.5 text-xs font-black border-2 border-black rounded-xl cursor-pointer ${tool === 'pen' ? 'bg-amber-400' : 'bg-stone-100'}`}>✏️ Lápiz</button>
-            <button type="button" onClick={() => { setTool('vector'); setSelectedStrokeIndex(null); }} className={`px-3 py-1.5 text-xs font-black border-2 border-black rounded-xl cursor-pointer ${tool === 'vector' ? 'bg-purple-400 text-white' : 'bg-stone-100'}`}>📐 Vector</button>
-            <button type="button" onClick={() => setTool('select')} className={`px-3 py-1.5 text-xs font-black border-2 border-black rounded-xl cursor-pointer ${tool === 'select' ? 'bg-blue-400 text-white' : 'bg-stone-100'}`}>🔀 Mover</button>
-            <button type="button" onClick={() => { setTool('fill'); setSelectedStrokeIndex(null); }} className={`px-3 py-1.5 text-xs font-black border-2 border-black rounded-xl cursor-pointer ${tool === 'fill' ? 'bg-orange-400 text-white' : 'bg-stone-100'}`}>🪣 Relleno</button>
-            <button type="button" onClick={() => { setTool('text'); setSelectedStrokeIndex(null); }} className={`px-3 py-1.5 text-xs font-black border-2 border-black rounded-xl cursor-pointer ${tool === 'text' ? 'bg-teal-400 text-white' : 'bg-stone-100'}`}>💬 Texto</button>
-            <button type="button" onClick={() => { setTool('eraser'); setSelectedStrokeIndex(null); }} className={`px-3 py-1.5 text-xs font-black border-2 border-black rounded-xl cursor-pointer ${tool === 'eraser' ? 'bg-rose-400' : 'bg-stone-100'}`}>🧹 Borrador</button>
-            <button type="button" onClick={() => { setTool('pan'); setSelectedStrokeIndex(null); }} className={`px-3 py-1.5 text-xs font-black border-2 border-black rounded-xl cursor-pointer ${tool === 'pan' ? 'bg-sky-400' : 'bg-stone-100'}`}>✋ Pan</button>
-
-            {/* BOTÓN MOSTRAR/OCULTAR CAPAS */}
+          <div className="flex items-center gap-2">
+            <span className="font-black text-xs uppercase bg-amber-200 px-2 py-1 rounded-lg border-2 border-black">
+              ✏️ S-PEN PRO
+            </span>
             <button
               type="button"
-              onClick={() => setShowLayersPanel(!showLayersPanel)}
-              className={`px-3 py-1.5 text-xs font-black border-2 border-black rounded-xl cursor-pointer ${showLayersPanel ? 'bg-amber-300' : 'bg-stone-200'}`}
-              title="Mostrar / Ocultar panel de capas"
+              onClick={() => setShowUI(false)}
+              className="bg-stone-200 hover:bg-stone-300 border-2 border-black px-2 py-1 rounded-lg text-xs font-black"
+              title="Modo Inmersivo (Ocultar Interfaz)"
             >
-              🗂️ Capas ({strokes.length})
+              👁️ Ocultar UI
             </button>
-
-            <button type="button" onClick={handleUndo} className="px-2.5 py-1.5 text-xs font-black bg-stone-100 border-2 border-black rounded-xl cursor-pointer" title="Deshacer">↩️</button>
-            <button type="button" onClick={handleRedo} className="px-2.5 py-1.5 text-xs font-black bg-stone-100 border-2 border-black rounded-xl cursor-pointer" title="Rehacer">↪️</button>
-
-            <button type="button" onClick={handleAiTranscription} disabled={isAnalyzing} className="px-3 py-1.5 text-[10px] font-black bg-indigo-300 border-2 border-black rounded-xl cursor-pointer">
-              {isAnalyzing ? '🤖 Leyendo...' : '🪄 IA'}
-            </button>
-
-            <button type="button" onClick={handleSave} className="px-4 py-2 bg-emerald-400 border-3 border-black rounded-xl font-black text-xs uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] cursor-pointer">💾 Guardar</button>
-            <button type="button" onClick={() => setShowUI(false)} className="px-3 py-1.5 bg-amber-300 border-2 border-black rounded-xl font-black text-xs cursor-pointer hover:bg-amber-400" title="Modo Inmersivo">👁️ Ocultar UI</button>
-            <button type="button" onClick={onClose} className="w-8 h-8 bg-rose-400 border-3 border-black rounded-xl font-black text-sm flex items-center justify-center shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] cursor-pointer">✕</button>
           </div>
+
+          <div className="h-6 w-0.5 bg-black"></div>
+
+          <div className="flex items-center gap-1.5">
+            <button type="button" onClick={handleUndo} className="p-1.5 bg-white hover:bg-stone-100 border-2 border-black rounded-lg text-xs font-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" title="Deshacer">↩️</button>
+            <button type="button" onClick={handleRedo} className="p-1.5 bg-white hover:bg-stone-100 border-2 border-black rounded-lg text-xs font-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" title="Rehacer">↪️</button>
+            <button type="button" onClick={handleClear} className="px-2.5 py-1 bg-rose-300 hover:bg-rose-400 border-2 border-black rounded-lg text-xs font-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">🧹 Limpiar</button>
+          </div>
+
+          <div className="h-6 w-0.5 bg-black"></div>
+
+          <div className="flex items-center gap-2">
+            <input
+              type="color"
+              value={brushColor}
+              onChange={(e) => setBrushColor(e.target.value)}
+              className="w-8 h-8 rounded-lg border-2 border-black cursor-pointer bg-white"
+              title="Color de Pincel"
+            />
+            <select
+              value={brushSize}
+              onChange={(e) => setBrushSize(Number(e.target.value))}
+              className="border-2 border-black rounded-lg px-2 py-1 text-xs font-black bg-white cursor-pointer"
+            >
+              <option value={2}>Fino (2px)</option>
+              <option value={4}>Normal (4px)</option>
+              <option value={8}>Grueso (8px)</option>
+              <option value={16}>Marcador (16px)</option>
+            </select>
+          </div>
+
+          <div className="h-6 w-0.5 bg-black"></div>
+
+          {/* Selector de Papel */}
+          <select
+            value={paperStyle}
+            onChange={(e) => setPaperStyle(e.target.value)}
+            className="border-2 border-black rounded-lg px-2 py-1 text-xs font-black bg-amber-100 cursor-pointer"
+          >
+            <option value="grid">Cuadriculado</option>
+            <option value="dots">Punteado</option>
+            <option value="lines">Líneas</option>
+            <option value="blank">En Blanco</option>
+          </select>
+
+          <button
+            type="button"
+            onClick={analyzeWithAI}
+            className="bg-purple-300 hover:bg-purple-400 border-2 border-black px-3 py-1 rounded-lg text-xs font-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] flex items-center gap-1"
+          >
+            ✨ Analizar con IA
+          </button>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="bg-black text-white hover:bg-stone-800 border-2 border-black px-3 py-1 rounded-lg text-xs font-black cursor-pointer ml-auto"
+          >
+            ✕ Cerrar
+          </button>
         </div>
       )}
 
-      {/* BOTÓN FLOTANTE PARA RESTAURAR LA INTERFAZ CUANDO ESTÁ OCULTA */}
+      {/* 🌟 BOTÓN PARA RESTAURAR UI EN MODO INMERSIVO */}
       {!showUI && (
         <button
           type="button"
           onClick={() => setShowUI(true)}
-          className="absolute top-4 right-4 z-60 bg-amber-400 border-3 border-black px-4 py-2 rounded-2xl font-black text-xs uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:bg-amber-300 transition-all"
+          className="absolute top-4 left-4 z-40 bg-white border-4 border-black px-4 py-2 rounded-xl text-xs font-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
         >
-          👁️‍🗨️ Mostrar UI
+          👁️ Mostrar Interfaz
         </button>
       )}
 
-      {/* ÁREA DE TRABAJO Y VENTANA DE CAPAS */}
-      <div className="flex-1 relative flex overflow-hidden bg-[#FEF8E7]">
-        <canvas
-          ref={canvasRef}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
-          className={`absolute inset-0 w-full h-full block ${tool === 'pan' ? 'cursor-grab' : tool === 'select' ? 'cursor-move' : tool === 'fill' ? 'cursor-cell' : tool === 'text' ? 'cursor-text' : 'cursor-crosshair'}`}
-        />
-
-        {/* 🌟 VENTANA DE CAPAS FLOTANTE CON REORDENAMIENTO CON LÁPIZ (DRAG & DROP DIRECTO) */}
-        {showUI && showLayersPanel && (
-          <div
-            style={{ left: `${layersPos.x}px`, top: `${layersPos.y}px` }}
-            className="absolute w-80 max-h-[85vh] z-40 bg-white/95 backdrop-blur-md border-4 border-black rounded-3xl p-4 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col"
-          >
-            {/* MANIJA DE ARRASTRE DEL PANEL DE CAPAS */}
-            <div
-              onPointerDown={(e) => handleStartPanelDrag('layers', e)}
-              className="flex justify-between items-center border-b-2 border-black pb-2 mb-2 cursor-grab active:cursor-grabbing touch-none select-none"
-              title="Mantén presionado con el lápiz para mover la ventana de capas"
+      {/* 🌟 PANEL DE CAPAS FLOTANTE Y REORDENABLE */}
+      {showUI && showLayersPanel && (
+        <div
+          style={{ transform: `translate(${layersPos.x}px, ${layersPos.y}px)` }}
+          className="absolute z-30 bg-white border-4 border-black rounded-2xl p-3 w-72 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] flex flex-col gap-3 cursor-move"
+          onPointerDown={(e) => handleStartPanelDrag('layers', e)}
+        >
+          <div className="flex justify-between items-center border-b-2 border-black pb-2">
+            <h4 className="font-black text-xs uppercase">📚 Capas y Objetos ({strokes.length})</h4>
+            <button
+              type="button"
+              onClick={() => setShowLayersPanel(false)}
+              className="text-xs font-black hover:bg-stone-100 px-1.5 py-0.5 rounded border border-black"
             >
-              <div className="flex items-center gap-1.5">
-                <span className="text-base font-black text-stone-500">⠿</span>
-                <h4 className="font-black uppercase text-xs">🗂️ Gestor de Capas</h4>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowLayersPanel(false)}
-                className="text-xs font-black bg-stone-200 border border-black rounded px-1.5 py-0.5 hover:bg-stone-300 cursor-pointer"
-                title="Ocultar ventana de capas"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* LISTA DE CAPAS REORDENABLE CON EL LÁPIZ (SIN BOTONES DE FLECHA) */}
-           <div className="flex-1 overflow-y-auto space-y-2 pr-1 min-h-35 max-h-[45vh]">
-              {strokes.length === 0 ? (
-                <div className="text-center py-8 text-stone-400 text-xs font-bold uppercase">Sin trazos en el lienzo</div>
-              ) : (
-                strokes.map((stroke, idx) => (
-                  <div
-                    key={stroke.id || idx}
-                    draggable
-                    onDragStart={() => handleLayerDragStart(idx)}
-                    onDragOver={(e) => handleLayerDragOver(e, idx)}
-                    onDrop={() => handleLayerDrop(idx)}
-                    onClick={() => { setSelectedStrokeIndex(idx); setTool('select'); }}
-                    className={`flex items-center justify-between p-2.5 border-2 border-black rounded-xl cursor-grab active:cursor-grabbing text-xs font-bold transition-all ${dragOverIndex === idx ? 'border-amber-500 bg-amber-200 ring-4 ring-amber-400 scale-102' : selectedStrokeIndex === idx ? 'bg-amber-100 ring-2 ring-black' : 'bg-stone-50 hover:bg-stone-100'}`}
-                  >
-                    <div className="flex items-center gap-2 truncate">
-                      <span className="text-stone-400 cursor-grab">⋮⋮</span>
-                      <button type="button" onClick={(e) => toggleLayerVisibility(idx, e)} className="text-xs" title="Ocultar/Mostrar">
-                        {stroke.hidden ? '🔒' : '👁️'}
-                      </button>
-                      <span className="truncate max-w-28">{stroke.name || `Capa #${idx + 1}`}</span>
-                    </div>
-
-                    <div className="flex items-center gap-1">
-                      {stroke.isText && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingTextIndex(idx);
-                            setCurrentTextValue(stroke.text);
-                            setTextInputPosition({ x: stroke.x, y: stroke.y });
-                            if (stroke.color) setBrushColor(stroke.color);
-                            if (stroke.size) setBrushSize(stroke.size);
-                            setTextModalOpen(true);
-                          }}
-                          className="p-1 hover:bg-stone-200 rounded"
-                          title="Editar texto"
-                        >
-                          ✏️
-                        </button>
-                      )}
-                      <button type="button" onClick={(e) => toggleLayerLock(idx, e)} className="p-1 hover:bg-stone-200 rounded" title="Bloquear">
-                        {stroke.locked ? '🔒' : '🔓'}
-                      </button>
-                      <button type="button" onClick={(e) => duplicateStroke(idx, e)} className="p-1 hover:bg-stone-200 rounded" title="Duplicar">📋</button>
-                      <button type="button" onClick={(e) => deleteStroke(idx, e)} className="p-1 text-rose-500 hover:bg-rose-100 rounded" title="Eliminar">🗑️</button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            {/* 🌟 CATÁLOGO DE 10 FORMAS GEOMÉTRICAS EDITABLES */}
-            <div className="pt-3 border-t-2 border-black space-y-1.5">
-              <span className="text-[10px] font-black uppercase text-stone-600 block">Formas Geometricas (10):</span>
-              <div className="grid grid-cols-5 gap-1">
-                <button type="button" onClick={() => insertPresetShape('circle')} className="p-1.5 bg-stone-100 hover:bg-amber-200 border-2 border-black rounded-lg text-[10px] font-black cursor-pointer text-center" title="Círculo">⭕ Círc</button>
-                <button type="button" onClick={() => insertPresetShape('rectangle')} className="p-1.5 bg-stone-100 hover:bg-amber-200 border-2 border-black rounded-lg text-[10px] font-black cursor-pointer text-center" title="Cuadro">🟩 Cuad</button>
-                <button type="button" onClick={() => insertPresetShape('ellipse')} className="p-1.5 bg-stone-100 hover:bg-amber-200 border-2 border-black rounded-lg text-[10px] font-black cursor-pointer text-center" title="Óvalo">🥚 Óval</button>
-                <button type="button" onClick={() => insertPresetShape('triangle')} className="p-1.5 bg-stone-100 hover:bg-amber-200 border-2 border-black rounded-lg text-[10px] font-black cursor-pointer text-center" title="Triángulo">🔺 Triá</button>
-                <button type="button" onClick={() => insertPresetShape('diamond')} className="p-1.5 bg-stone-100 hover:bg-amber-200 border-2 border-black rounded-lg text-[10px] font-black cursor-pointer text-center" title="Rombo">🔷 Romb</button>
-                <button type="button" onClick={() => insertPresetShape('star')} className="p-1.5 bg-stone-100 hover:bg-amber-200 border-2 border-black rounded-lg text-[10px] font-black cursor-pointer text-center" title="Estrella">⭐ Estr</button>
-                <button type="button" onClick={() => insertPresetShape('hexagon')} className="p-1.5 bg-stone-100 hover:bg-amber-200 border-2 border-black rounded-lg text-[10px] font-black cursor-pointer text-center" title="Hexágono">⬡ Hexa</button>
-                <button type="button" onClick={() => insertPresetShape('line')} className="p-1.5 bg-stone-100 hover:bg-amber-200 border-2 border-black rounded-lg text-[10px] font-black cursor-pointer text-center" title="Línea">➖ Lín</button>
-                <button type="button" onClick={() => insertPresetShape('arrow')} className="p-1.5 bg-stone-100 hover:bg-amber-200 border-2 border-black rounded-lg text-[10px] font-black cursor-pointer text-center" title="Flecha">➡️ Flec</button>
-                <button type="button" onClick={() => insertPresetShape('heart')} className="p-1.5 bg-stone-100 hover:bg-amber-200 border-2 border-black rounded-lg text-[10px] font-black cursor-pointer text-center" title="Corazón">❤️ Cora</button>
-              </div>
-
-              <button type="button" onClick={() => { setStrokes([]); setSelectedStrokeIndex(null); }} className="w-full py-1.5 bg-rose-200 hover:bg-rose-300 border-2 border-black rounded-xl text-[10px] font-black cursor-pointer uppercase mt-2">
-                🗑️ Limpiar Lienzo
-              </button>
-            </div>
+              ✕
+            </button>
           </div>
-        )}
-      </div>
 
-      {/* MODAL DE TEXTO (CREAR / EDITAR) */}
+          <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1">
+            {strokes.length === 0 ? (
+              <p className="text-[10px] text-stone-500 text-center py-4 font-bold uppercase">No hay elementos en el lienzo</p>
+            ) : (
+              strokes.map((stroke, index) => (
+                <div
+                  key={stroke.id || index}
+                  draggable
+                  onDragStart={() => handleLayerDragStart(index)}
+                  onDragOver={(e) => handleLayerDragOver(e, index)}
+                  onDrop={() => handleLayerDrop(index)}
+                  onClick={() => setSelectedStrokeIndex(index)}
+                  className={`flex items-center justify-between p-2 rounded-xl border-2 cursor-pointer transition-all ${
+                    selectedStrokeIndex === index 
+                      ? 'bg-sky-100 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' 
+                      : 'bg-stone-50 border-stone-300 hover:bg-stone-100'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 truncate">
+                    <span className="text-[10px] font-black text-stone-400">#{index + 1}</span>
+                    <span className="text-xs font-black truncate max-w-27.5">{stroke.name || 'Objeto'}</span>
+                  </div>
+
+                  <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      onClick={(e) => toggleLayerVisibility(index, e)}
+                      className="p-1 rounded hover:bg-white text-xs"
+                      title={stroke.hidden ? "Mostrar" : "Ocultar"}
+                    >
+                      {stroke.hidden ? '👁️‍🗨️' : '👁️'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => toggleLayerLock(index, e)}
+                      className="p-1 rounded hover:bg-white text-xs"
+                      title={stroke.locked ? "Desbloquear" : "Bloquear"}
+                    >
+                      {stroke.locked ? '🔒' : '🔓'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => duplicateStroke(index, e)}
+                      className="p-1 rounded hover:bg-white text-xs"
+                      title="Duplicar"
+                    >
+                      📋
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => deleteStroke(index, e)}
+                      className="p-1 rounded hover:bg-rose-100 text-xs text-rose-600"
+                      title="Eliminar"
+                    >
+                      🗑️
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 🌟 BARRA INFERIOR DE HERRAMIENTAS Y 10 FORMAS GEOMÉTRICAS */}
+      {showUI && (
+        <div
+          style={{ transform: `translate(${bottomBarPos.x}px, ${bottomBarPos.y}px)` }}
+          className="absolute z-30 bg-white border-4 border-black rounded-2xl p-2.5 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] flex flex-wrap items-center gap-2 cursor-move"
+          onPointerDown={(e) => handleStartPanelDrag('bottomBar', e)}
+        >
+          <div className="flex items-center gap-1 bg-stone-100 p-1 rounded-xl border-2 border-black">
+            <button
+              type="button"
+              onClick={() => setTool('pen')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${tool === 'pen' ? 'bg-yellow-400 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'hover:bg-stone-200'}`}
+              title="Lápiz / Pincel"
+            >
+              🖊️ Lápiz
+            </button>
+            <button
+              type="button"
+              onClick={() => setTool('vector')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${tool === 'vector' ? 'bg-yellow-400 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'hover:bg-stone-200'}`}
+              title="Curvas Vectoriales"
+            >
+              ✒️ Vector
+            </button>
+            <button
+              type="button"
+              onClick={() => setTool('eraser')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${tool === 'eraser' ? 'bg-yellow-400 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'hover:bg-stone-200'}`}
+              title="Borrador"
+            >
+              🧹 Borrador
+            </button>
+            <button
+              type="button"
+              onClick={() => setTool('text')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${tool === 'text' ? 'bg-yellow-400 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'hover:bg-stone-200'}`}
+              title="Herramienta Texto"
+            >
+              T Text
+            </button>
+            <button
+              type="button"
+              onClick={() => setTool('fill')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${tool === 'fill' ? 'bg-yellow-400 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'hover:bg-stone-200'}`}
+              title="Bote de Pintura"
+            >
+              🪣 Relleno
+            </button>
+            <button
+              type="button"
+              onClick={() => setTool('pan')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${tool === 'pan' ? 'bg-yellow-400 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'hover:bg-stone-200'}`}
+              title="Mover Lienzo (Pan)"
+            >
+              🖐️ Pan
+            </button>
+          </div>
+
+          <div className="h-6 w-0.5 bg-black"></div>
+
+          {/* Menú Rápido de 10 Formas Geométricas */}
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] font-black uppercase text-stone-500">Formas:</span>
+            <button type="button" onClick={() => insertPresetShape('circle')} className="p-1.5 bg-sky-100 hover:bg-sky-200 border-2 border-black rounded-lg text-xs font-black" title="Círculo">⭕</button>
+            <button type="button" onClick={() => insertPresetShape('rectangle')} className="p-1.5 bg-sky-100 hover:bg-sky-200 border-2 border-black rounded-lg text-xs font-black" title="Rectángulo">⬛</button>
+            <button type="button" onClick={() => insertPresetShape('triangle')} className="p-1.5 bg-sky-100 hover:bg-sky-200 border-2 border-black rounded-lg text-xs font-black" title="Triángulo">🔺</button>
+            <button type="button" onClick={() => insertPresetShape('diamond')} className="p-1.5 bg-sky-100 hover:bg-sky-200 border-2 border-black rounded-lg text-xs font-black" title="Rombo">🔷</button>
+            <button type="button" onClick={() => insertPresetShape('star')} className="p-1.5 bg-sky-100 hover:bg-sky-200 border-2 border-black rounded-lg text-xs font-black" title="Estrella">⭐</button>
+            <button type="button" onClick={() => insertPresetShape('heart')} className="p-1.5 bg-sky-100 hover:bg-sky-200 border-2 border-black rounded-lg text-xs font-black" title="Corazón">❤️</button>
+            <button type="button" onClick={() => insertPresetShape('arrow')} className="p-1.5 bg-sky-100 hover:bg-sky-200 border-2 border-black rounded-lg text-xs font-black" title="Flecha">➡️</button>
+          </div>
+
+          <div className="h-6 w-0.5 bg-black"></div>
+
+          {/* Botón de Guardado Final */}
+          <button
+            type="button"
+            onClick={handleSave}
+            className="bg-emerald-400 hover:bg-emerald-500 border-3 border-black px-5 py-2 rounded-xl text-xs font-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] cursor-pointer transition-all ml-auto"
+          >
+            💾 Guardar Nota
+          </button>
+        </div>
+      )}
+
+      {/* 🌟 MODAL DE TEXTO FLOTANTE CON VOZ Y TECLADO */}
       {textModalOpen && (
-        <div className="absolute inset-0 z-60 bg-black/60 flex items-center justify-center p-4">
-          <form onSubmit={handleAddTextSubmit} className="bg-[#Fef8e7] border-4 border-black rounded-3xl p-6 max-w-md w-full shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] space-y-4">
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <form onSubmit={handleAddTextSubmit} className="bg-[#FEF8E7] border-4 border-black rounded-3xl p-6 max-w-md w-full shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col gap-4 font-mono">
             <div className="flex justify-between items-center border-b-2 border-black pb-2">
-              <h4 className="font-black uppercase text-sm">
-                {editingTextIndex !== null ? '💬 Editar Texto' : '💬 Insertar Texto Digital'}
-              </h4>
-              <button type="button" onClick={() => { setTextModalOpen(false); setEditingTextIndex(null); }} className="font-black text-lg cursor-pointer">✕</button>
+              <h3 className="font-black text-sm uppercase">⌨️ {editingTextIndex !== null ? 'Editar Texto' : 'Escribir Texto'}</h3>
+              <button type="button" onClick={() => setTextModalOpen(false)} className="text-xs font-black">✕</button>
             </div>
-            
-            <div className="flex gap-2 items-center">
-              <textarea
-                autoFocus
-                rows={3}
-                value={currentTextValue}
-                onChange={(e) => setCurrentTextValue(e.target.value)}
-                placeholder="Escribe tu texto con el teclado o dicta con voz..."
-                className="flex-1 bg-white border-2 border-black p-3 rounded-2xl font-bold text-xs uppercase outline-none resize-none"
-              />
+
+            <textarea
+              value={currentTextValue}
+              onChange={(e) => setCurrentTextValue(e.target.value)}
+              placeholder="Escribe tu nota o usa el dictado por voz..."
+              rows={4}
+              className="w-full border-3 border-black rounded-xl p-3 text-xs font-black bg-white focus:outline-none"
+              autoFocus
+            />
+
+            <div className="flex justify-between items-center">
               <button
                 type="button"
                 onClick={startVoiceDictation}
-                className={`p-3.5 border-2 border-black rounded-2xl font-black cursor-pointer flex flex-col items-center justify-center ${isListening ? 'bg-rose-400 animate-pulse' : 'bg-amber-300 hover:bg-amber-400'}`}
-                title="Dictar por voz"
+                className={`px-4 py-2 border-2 border-black rounded-xl text-xs font-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${isListening ? 'bg-rose-400 animate-pulse' : 'bg-sky-300 hover:bg-sky-400'}`}
               >
-                <span className="text-lg">🎤</span>
-                <span className="text-[9px] uppercase font-black">{isListening ? 'Oyendo' : 'Dictar'}</span>
+                {isListening ? '🎙️ Escuchando...' : '🎤 Dictar por Voz'}
               </button>
-            </div>
 
-            <div className="flex flex-wrap gap-3 items-center justify-between bg-stone-100 p-3 border-2 border-black rounded-2xl">
-              <div>
-                <label className="block text-[10px] font-black uppercase mb-1">Color:</label>
-                <div className="flex gap-1">
-                  {['#000000', '#EF4444', '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6'].map((color) => (
-                    <button
-                      key={color}
-                      type="button"
-                      onClick={() => setBrushColor(color)}
-                      className={`w-5 h-5 rounded-full border-2 border-black cursor-pointer ${brushColor === color ? 'ring-2 ring-black scale-110' : ''}`}
-                      style={{ backgroundColor: color }}
-                    />
-                  ))}
-                </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTextModalOpen(false)}
+                  className="px-4 py-2 bg-stone-200 border-2 border-black rounded-xl text-xs font-black"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-emerald-400 border-2 border-black rounded-xl text-xs font-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]"
+                >
+                  Aceptar
+                </button>
               </div>
-
-              <div>
-                <label className="block text-[10px] font-black uppercase mb-1">Tamaño Fuente:</label>
-                <div className="flex gap-1">
-                  {[3, 5, 8, 12].map((size) => (
-                    <button
-                      key={size}
-                      type="button"
-                      onClick={() => setBrushSize(size)}
-                      className={`w-6 h-6 text-[10px] font-black border border-black rounded cursor-pointer ${brushSize === size ? 'bg-amber-400' : 'bg-white'}`}
-                    >
-                      {size}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex gap-2">
-              <button type="button" onClick={() => { setTextModalOpen(false); setEditingTextIndex(null); }} className="flex-1 py-2.5 bg-stone-200 border-3 border-black rounded-xl font-black text-xs uppercase cursor-pointer">Cancelar</button>
-              <button type="submit" className="flex-1 py-2.5 bg-amber-400 border-3 border-black rounded-xl font-black text-xs uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] cursor-pointer">
-                {editingTextIndex !== null ? 'Actualizar Texto' : 'Insertar Texto'}
-              </button>
             </div>
           </form>
         </div>
       )}
 
-      {/* MODAL DE IA */}
+      {/* 🌟 MODAL DE ANÁLISIS DE INTELIGENCIA ARTIFICIAL */}
       {showAiModal && (
-        <div className="absolute inset-0 z-60 bg-black/60 flex items-center justify-center p-4">
-          <div className="bg-[#Fef8e7] border-4 border-black rounded-3xl p-6 max-w-md w-full shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] space-y-4">
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-[#FEF8E7] border-4 border-black rounded-3xl p-6 max-w-lg w-full shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col gap-4 font-mono">
             <div className="flex justify-between items-center border-b-2 border-black pb-2">
-              <h4 className="font-black uppercase text-sm">🤖 Texto Interpretado por IA</h4>
-              <button onClick={() => setShowAiModal(false)} className="font-black text-lg cursor-pointer">✕</button>
+              <h3 className="font-black text-sm uppercase">✨ Análisis de Trazos con Gemini AI</h3>
+              <button type="button" onClick={() => setShowAiModal(false)} className="text-xs font-black">✕</button>
             </div>
-            <div className="bg-white border-2 border-black p-3 rounded-2xl max-h-48 overflow-y-auto">
-              <p className="text-xs font-bold uppercase whitespace-pre-wrap">{aiTranscript}</p>
+
+            <div className="bg-white border-3 border-black rounded-2xl p-4 min-h-37.5 max-h-72 overflow-y-auto text-xs font-bold leading-relaxed">
+              {isAnalyzing ? (
+                <div className="flex flex-col items-center justify-center py-10 gap-2">
+                  <div className="w-6 h-6 border-4 border-black border-t-transparent rounded-full animate-spin"></div>
+                  <p className="uppercase text-[10px]">Analizando tu lienzo y notas...</p>
+                </div>
+              ) : (
+                <p className="whitespace-pre-wrap">{aiTranscript}</p>
+              )}
             </div>
-            <button type="button" onClick={() => setShowAiModal(false)} className="w-full py-2.5 bg-amber-400 border-3 border-black rounded-xl font-black text-xs uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] cursor-pointer">Aceptar</button>
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowAiModal(false)}
+                className="bg-black text-white hover:bg-stone-800 border-3 border-black px-6 py-2 rounded-xl text-xs font-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]"
+              >
+                Cerrar
+              </button>
+            </div>
           </div>
-        </div>
-      )}
-
-      {/* 🌟 BARRA INFERIOR DE COLORES Y GROSOR - ARRASTRABLE Y AUTO-AJUSTABLE ⠿ */}
-      {showUI && (
-        <div
-          style={{ left: `${bottomBarPos.x}px`, top: `${bottomBarPos.y}px` }}
-          className="absolute z-50 bg-white/95 backdrop-blur-md border-4 border-black px-4 py-2.5 rounded-2xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] flex items-center gap-3 flex-wrap justify-center max-w-[calc(100vw-2rem)]"
-        >
-          {/* MANIJA DE ARRASTRE DE LA BARRA INFERIOR */}
-          <div
-            onPointerDown={(e) => handleStartPanelDrag('bottomBar', e)}
-            className="cursor-grab active:cursor-grabbing p-1 hover:bg-stone-200 rounded-lg flex items-center gap-1 touch-none select-none"
-            title="Mantén presionado con el lápiz para mover la paleta"
-          >
-            <span className="text-base font-black text-stone-500">⠿</span>
-          </div>
-
-          <span className="text-[10px] font-black uppercase text-stone-600">Color:</span>
-          {['#000000', '#EF4444', '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6'].map((color) => (
-            <button
-              key={color}
-              type="button"
-              onClick={() => changeColor(color)}
-              className={`w-7 h-7 rounded-full border-2 border-black cursor-pointer transition-transform ${brushColor === color ? 'scale-125 ring-2 ring-black' : 'hover:scale-110'}`}
-              style={{ backgroundColor: color }}
-            />
-          ))}
-
-          <div className="h-6 w-0.5 bg-black mx-1" />
-
-          <span className="text-[10px] font-black uppercase text-stone-600">Tamaño:</span>
-          {[2, 4, 8, 14].map((size) => (
-            <button
-              key={size}
-              type="button"
-              onClick={() => changeSize(size)}
-              className={`w-6 h-6 flex items-center justify-center text-[10px] font-black border-2 border-black rounded-md cursor-pointer ${brushSize === size ? 'bg-amber-400' : 'bg-stone-100'}`}
-            >
-              {size}
-            </button>
-          ))}
-
-          {/* CONTROL DE TRANSPARENCIA DEL BOTE DE PINTURA */}
-          {tool === 'fill' && (
-            <>
-              <div className="h-6 w-0.5 bg-black mx-1" />
-              <div className="flex items-center gap-1.5 bg-orange-50 border-2 border-orange-400 px-2.5 py-1 rounded-xl">
-                <span className="text-[10px] font-black uppercase text-orange-900">Transparencia:</span>
-                <input
-                  type="range"
-                  min="0.1"
-                  max="1.0"
-                  step="0.1"
-                  value={fillOpacity}
-                  onChange={(e) => setFillOpacity(parseFloat(e.target.value))}
-                  className="w-20 accent-orange-500 cursor-pointer"
-                />
-                <span className="text-[10px] font-black text-orange-900">{Math.round(fillOpacity * 100)}%</span>
-              </div>
-            </>
-          )}
         </div>
       )}
 
