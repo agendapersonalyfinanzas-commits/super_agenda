@@ -79,7 +79,14 @@ export default function CalendarScreen({ activeUser, auditorMode, isMasterAudito
 
   const playAlertSound = () => {
     try {
-      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) return;
+      
+      const audioCtx = new AudioContextClass();
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
       
@@ -87,7 +94,7 @@ export default function CalendarScreen({ activeUser, auditorMode, isMasterAudito
       osc.frequency.setValueAtTime(587.33, audioCtx.currentTime);
       osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.3);
 
-      gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
 
       osc.connect(gain);
@@ -96,7 +103,7 @@ export default function CalendarScreen({ activeUser, auditorMode, isMasterAudito
       osc.start();
       osc.stop(audioCtx.currentTime + 0.5);
     } catch (err) {
-      console.warn('Audio Context no permitido sin interacción previa:', err);
+      console.warn('Audio Context protegido en móvil:', err);
     }
   };
 
@@ -138,19 +145,25 @@ export default function CalendarScreen({ activeUser, auditorMode, isMasterAudito
     if (alertStatus !== 'granted') return;
 
     const checkTodayEvents = () => {
-      const dateStr = getLocalTodayISOString();
-      const todayTasks = dayTasks[dateStr] || [];
-      
-      todayTasks.forEach(evt => {
-        if (!evt.is_completed && !evt.notified) {
-          playAlertSound();
-          new Notification(`📌 RECORDATORIO: ${evt.text || 'Evento Programado'}`, {
-            body: evt.is_pago ? `Pago programado por $${evt.monto} (${evt.category})` : `Tienes una actividad programada para hoy.`,
-            icon: '/favicon.ico'
-          });
-          evt.notified = true;
-        }
-      });
+      try {
+        const dateStr = getLocalTodayISOString();
+        const todayTasks = dayTasks[dateStr] || [];
+        
+        todayTasks.forEach(evt => {
+          if (!evt.is_completed && !evt.notified) {
+            playAlertSound();
+            if ('Notification' in window && Notification.permission === 'granted') {
+              new Notification(`📌 RECORDATORIO: ${evt.text || 'Evento Programado'}`, {
+                body: evt.is_pago ? `Pago programado por $${evt.monto} (${evt.category})` : `Tienes una actividad programada para hoy.`,
+                icon: '/favicon.ico'
+              });
+            }
+            evt.notified = true;
+          }
+        });
+      } catch (e) {
+        console.error("Error en verificación de alertas:", e);
+      }
     };
 
     const interval = setInterval(checkTodayEvents, 60000);
