@@ -12,6 +12,11 @@ import AnalyticsScreen from './components/UI/screens/AnalyticsScreen.jsx';
 import GameScreen from './components/Games/GamesScreen.jsx';
 import Navigation from './components/UI/Navigation.jsx';
 
+// 🌟 Importación de las vistas y componentes de Finanzas / OCR
+import FinanzasView from './components/FinanzasView.jsx';
+import MetricasView from './components/MetricasView.jsx';
+import OCRScanner from './components/Expenses/OCRScanner.jsx';
+
 // Imagen estática desde la carpeta public
 const superSnoopy = '/super-snoopy.png';
 
@@ -21,6 +26,9 @@ export default function App() {
   const [user_name, setuser_name] = useState(''); 
   const [activeTab, setActiveTab] = useState('finances'); // 'finances' | 'agenda' | 'metrics' | 'games'
   const [selectedGame, setSelectedGame] = useState(null); 
+
+  // --- ESTADO PARA MOSTRAR EL ESCÁNER DE TICKETS ---
+  const [showScanner, setShowScanner] = useState(false);
 
   // --- ESTADOS DE MODO DIOS / AUDITORÍA ---
   const [auditorMode, setAuditorMode] = useState(() => {
@@ -308,9 +316,32 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#Fef8e7] font-mono selection:bg-amber-300 relative pb-28">
       
+      {/* 🌟 BOTÓN FLOTANTE O DE ACCESO RÁPIDO PARA ESCANEAR TICKETS */}
+      <div className="max-w-xl mx-auto px-4 pt-4 flex justify-end">
+        <button
+          onClick={() => setShowScanner(true)}
+          className="bg-emerald-400 hover:bg-emerald-300 text-black border-3 border-black px-4 py-2 rounded-xl font-black text-xs uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer flex items-center space-x-1"
+        >
+          <span>📸</span>
+          <span>Escanear Ticket</span>
+        </button>
+      </div>
+
       {/* RENDERIZADO DE LAS PANTALLAS CON SOPORTE DE MODO DIOS */}
       <main className="p-4">
-        {activeTab === 'finances' && <DashboardScreen />}
+        {/* Usamos FinanzasView para la pestaña de finanzas y le añadimos las métricas debajo o integradas según tu diseño */}
+        {activeTab === 'finances' && (
+          <div className="space-y-6 max-w-xl mx-auto">
+            <DashboardScreen />
+            <div className="border-t-4 border-black pt-6">
+              <MetricasView />
+            </div>
+            <div className="border-t-4 border-black pt-6">
+              <FinanzasView />
+            </div>
+          </div>
+        )}
+
         {activeTab === 'agenda' && (
           <CalendarScreen 
             activeUser={activeUser}
@@ -339,6 +370,18 @@ export default function App() {
           />
         )}
       </main>
+
+      {/* 🌟 MODAL DEL ESCÁNER DE TICKETS CON IA */}
+      {showScanner && (
+        <OCRScanner 
+          onClose={() => setShowScanner(false)} 
+          onScanSuccess={(nuevoGasto) => {
+            console.log('Gasto escaneado y guardado correctamente:', nuevoGasto);
+            // Forzar un evento de storage para que FinanzasView y MetricasView se actualicen al instante
+            window.dispatchEvent(new Event('storage'));
+          }} 
+        />
+      )}
 
       <Navigation activeTab={activeTab} setActiveTab={setActiveTab} />
       

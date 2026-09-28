@@ -1,6 +1,6 @@
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI } from '@google/genai';
 
-const fileToGenerativePart = async (file) => {
+const fileToBase64 = (file) => {
   return new Promise((resolve, reject) => {
     const maxWidth = 1024;
     const maxHeight = 1024;
@@ -34,15 +34,9 @@ const fileToGenerativePart = async (file) => {
 
         const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
         const base64Data = dataUrl.split(',')[1];
-
-        resolve({
-          inlineData: {
-            data: base64Data,
-            mimeType: 'image/jpeg',
-          },
-        });
+        resolve(base64Data);
       };
-      img.onerror = (err) => reject(new Error('No se pudo leer la imagen.'));
+      img.onerror = () => reject(new Error('No se pudo leer la imagen en el canvas.'));
     };
     reader.onerror = (err) => reject(err);
     reader.readAsDataURL(file);
@@ -54,52 +48,69 @@ export const scanTicketOCR = async (file) => {
     throw new Error('No se proporcionó ningún archivo de imagen.');
   }
 
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  const apiKey = 
+    (typeof import.meta !== 'undefined' && import.meta.env && (import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.REACT_APP_GEMINI_API_KEY)) ||
+    (typeof process !== 'undefined' && process.env && (process.env.REACT_APP_GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY));
+
   if (!apiKey) {
-    throw new Error('Falta configurar la llave VITE_GEMINI_API_KEY en tu archivo .env');
+    throw new Error('Falta configurar la llave de API de Gemini en tu archivo .env');
   }
 
   const ai = new GoogleGenAI({ apiKey });
-  const imagePart = await fileToGenerativePart(file);
+  const base64Data = await fileToBase64(file);
 
   const prompt = `
-    Analiza esta imagen de un ticket o recibo de compra. Extrae la información con precisión:
-    1. El total exacto a pagar (amount).
-    2. El nombre del comercio o establecimiento en MAYÚSCULAS (concept).
-    3. Una categoría sugerida estrictamente de esta lista: ALIMENTOS, TRANSPORTE, SERVICIOS, ENTRETENIMIENTO, SALUD, SUPERMERCADO, HOGAR, OTROS (category).
+    Analiza esta imagen de un ticket o recibo de compra. Extrae la información y devuelve un objeto JSON válido con exactamente estas tres llaves:
+    1. "amount": número flotante con el total exacto a pagar (ej: 150.50). Si no encuentras el total, pon 0.
+    2. "concept": el nombre del comercio, establecimiento o descripción del gasto (en MAYÚSCULAS).
+    3. "category": una categoría sugerida estrictamente de esta lista: ALIMENTOS, TRANSPORTE, SERVICIOS, ENTRETENIMIENTO, SALUD, SUPERMERCADO, HOGAR, OTROS (en MAYÚSCULAS).
+    
+    Ejemplo de formato requerido:
+    {"amount": 250.00, "concept": "SUPERAMA", "category": "SUPERMERCADO"}
   `;
 
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [prompt, imagePart],
-      config: {
-        // 🌟 FORZAMOS A LA IA A DEVOLVER UN JSON PURO Y ESTRUCTURADO
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            amount: { type: Type.NUMBER, description: "Total exacto a pagar en número flotante" },
-            concept: { type: Type.STRING, description: "Nombre del comercio en MAYÚSCULAS" },
-            category: { type: Type.STRING, description: "Categoría exacta permitida" }
-          },
-          required: ['amount', 'concept', 'category']
-        }
+  // Modelo requerido por la respuesta actual del servidor de Google AI
+  const modelsToTry = ['gemini-3.8-flash', 'gemini-1.5-flash'];
+  let lastError = null;
+
+  for (const modelName of modelsToTry) {
+    try {
+      console.log(`Intentando escanear ticket con el modelo: ${modelName}`);
+      const response = await ai.models.generateContent({
+        model: modelName,
+        contents: [
+          prompt,
+          {
+            inlineData: {
+              mimeType: 'image/jpeg',
+              data: base64Data
+            }
+          }
+        ],
+      });
+
+      const textResponse = response.text ? response.text.trim() : '';
+      console.log(`Respuesta exitosa de ${modelName}:`, textResponse);
+
+      const jsonMatch = textResponse.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('La respuesta de la IA no contiene JSON válido.');
       }
-    });
 
-    const textResponse = response.text ? response.text.trim() : '{}';
-    const parsedData = JSON.parse(textResponse);
+      const parsedData = JSON.parse(jsonMatch[0]);
 
-    return {
-      amount: Number(parsedData.amount) || 0,
-      concept: parsedData.concept ? parsedData.concept.toUpperCase() : 'COMPRA CON TICKET',
-      category: parsedData.category ? parsedData.category.toUpperCase() : 'OTROS',
-      rawText: textResponse
-    };
+      return {
+        amount: Number(parsedData.amount) || 0,
+        concept: parsedData.concept ? String(parsedData.concept).toUpperCase() : 'COMPRA CON TICKET',
+        category: parsedData.category ? String(parsedData.category).toUpperCase() : 'OTROS',
+        rawText: textResponse
+      };
 
-  } catch (error) {
-    console.error('Error al procesar con Gemini:', error);
-    throw new Error('La IA no pudo interpretar el ticket. Intenta con una foto más clara.');
+    } catch (error) {
+      console.warn(`Falló el modelo ${modelName}:`, error.message);
+      lastError = error;
+    }
   }
+
+  throw new Error(`Error al procesar el ticket: ${lastError?.message || 'La IA no pudo completar la solicitud.'}`);
 };

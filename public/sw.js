@@ -1,4 +1,4 @@
-const CACHE_NAME = 'super-agenda-v1';
+const CACHE_NAME = 'super-agenda-v3';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -34,6 +34,14 @@ self.addEventListener('activate', (event) => {
 
 // Interceptor de peticiones (Soporte Offline)
 self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+
+  // 🌟 EXCLUSIÓN: Forzar que las peticiones a Supabase vayan directo a la red sin bloquearlas
+  if (url.hostname.includes('supabase.co')) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then((response) => {
       return response || fetch(event.request);
@@ -41,7 +49,7 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// 🔔 NUEVO: Manejo de notificaciones push en segundo plano con app cerrada
+// 🔔 Manejo de notificaciones push en segundo plano con app cerrada
 self.addEventListener('push', (event) => {
   let data = { title: 'Super Agenda', body: 'Tienes un pendiente programado.' };
   
