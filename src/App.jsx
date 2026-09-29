@@ -315,17 +315,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#Fef8e7] font-mono selection:bg-amber-300 relative pb-28">
-      
-      {/* 🌟 BOTÓN FLOTANTE O DE ACCESO RÁPIDO PARA ESCANEAR TICKETS */}
-      <div className="max-w-xl mx-auto px-4 pt-4 flex justify-end">
-        <button
-          onClick={() => setShowScanner(true)}
-          className="bg-emerald-400 hover:bg-emerald-300 text-black border-3 border-black px-4 py-2 rounded-xl font-black text-xs uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer flex items-center space-x-1"
-        >
-          <span>📸</span>
-          <span>Escanear Ticket</span>
-        </button>
-      </div>
 
       {/* RENDERIZADO DE LAS PANTALLAS CON SOPORTE DE MODO DIOS */}
       <main className="p-4">
