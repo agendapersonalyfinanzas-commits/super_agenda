@@ -19,7 +19,7 @@ async function initWorker(onProgress) {
 }
 
 /**
- * 🚀 Preprocesamiento móvil ultraligero en Canvas (escala de grises y contraste para tickets térmicos)
+ * 🚀 Preprocesamiento móvil avanzado en Canvas (escala de grises y contraste para tickets térmicos)
  */
 async function enhanceImageForMobile(fileOrBlob, maxWidth = 1200) {
   return new Promise((resolve) => {
@@ -79,7 +79,7 @@ export async function parseExpenseInput(inputData, onProgress) {
       const { data: { text } } = await worker.recognize(imageUrl);
       URL.revokeObjectURL(imageUrl);
 
-      console.log('📄 TEXTO OCR MÓVIL RECIBIDO:\n', text);
+      console.log('📄 TEXTO OCR RECIBIDO:\n', text);
 
       if (text && text.trim().length > 0) {
         return await parseMexicanTicket(text);
@@ -102,53 +102,20 @@ export async function parseExpenseInput(inputData, onProgress) {
   };
 }
 
-/**
- * Parser con Motor de Puntuación Semántica y Memoria Híbrida para Celulares
- */
 async function parseMexicanTicket(ocrText) {
-  const lines = ocrText
+  // Normalizar texto para corregir puntos térmicos leídos como espacios (ej: "32 00" -> "32.00")
+  const normalizedText = ocrText.replace(/(\d{2,3})\s+(\d{2})\b/g, '$1.$2');
+
+  const lines = normalizedText
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
 
-  let concept = 'CHEDRAUI';
   let totalAmount = 0;
   let category = 'SUPERMERCADO';
   const items = [];
 
-  // Diccionario de Comercios Inteligente
-  const STORE_DICTIONARY = [
-    { pattern: /CHEDRAU/i, name: 'CHEDRAUI', cat: 'SUPERMERCADO' },
-    { pattern: /SAMS\s*CLUB|SAM'S/i, name: 'SAM\'S CLUB', cat: 'SUPERMERCADO' },
-    { pattern: /COSTCO/i, name: 'COSTCO WHOLESALE', cat: 'SUPERMERCADO' },
-    { pattern: /WALMART/i, name: 'WALMART', cat: 'SUPERMERCADO' },
-    { pattern: /BODEGA\s*AURRERA/i, name: 'BODEGA AURRERÁ', cat: 'SUPERMERCADO' },
-    { pattern: /SORIANA/i, name: 'SORIANA', cat: 'SUPERMERCADO' },
-    { pattern: /OXXO/i, name: 'OXXO', cat: 'ALIMENTOS' },
-    { pattern: /FARMACIA|GUADALAJARA|SIMILARES|POZA\s*RICA/i, name: 'FARMACIA', cat: 'SALUD' }
-  ];
-
-  for (const line of lines) {
-    for (const store of STORE_DICTIONARY) {
-      if (store.pattern.test(line)) {
-        concept = store.name;
-        category = store.cat;
-        break;
-      }
-    }
-    if (concept !== 'CHEDRAUI') break;
-  }
-
-  // 🧠 Consulta de Memoria Híbrida Local/Nube
-  let learnedTemplate = null;
-  try {
-    learnedTemplate = await obtenerPlantillaLocalYNube(concept);
-    if (learnedTemplate && learnedTemplate.category) {
-      category = learnedTemplate.category;
-    }
-  } catch (e) {}
-
-  // 1. Detección de Fecha con tolerancia móvil
+  // 1. Detección de Fecha
   let ticketDate = null;
   const MONTH_MAP = {
     'ENE': '01', 'FEB': '02', 'MAR': '03', 'ABR': '04', 'MAY': '05', 'JUN': '06',
@@ -172,7 +139,7 @@ async function parseMexicanTicket(ocrText) {
     }
   }
 
-  // 2. Extracción Semántica del Monto Total (Evita SUBTOTAL)
+  // 2. Extracción ultra estricta del Monto Total
   for (const line of lines) {
     if (/TOTAL/i.test(line) && !/SUBTOTAL/i.test(line)) {
       const matches = line.match(/([0-9,]+\.\d{2})/g);
@@ -186,11 +153,11 @@ async function parseMexicanTicket(ocrText) {
     }
   }
 
-  const IGNORE_PATTERNS = /TIENDAS|OXXO|WALMART|BODEGA|OFFICE|PEMEX|SAMS|COSTCO|SORIANA|ARTELI|HOME|LIVERPOOL|S\.?A\.?|C\.?V\.?|R\.?F\.?C\.?|SUC|BLVD|AV\.|CANT|ARTICULO|PRECIC|SUBTOTAL|TOTAL|AFILIACION|TARJETA|CAMBIO|AUT#|PROSA|SALDO|REBAJADO|AHORRO|IVA|IEPS|ATENDIO|OPINION|REDONDEO|REGIMEN|AVISO|PAGO|EFECTIVO|MENSAJE|GRACIAS|TASA|IMPORTE|CLIENTE|CAJERO|CODIGO|DEVOLUCIONES|PREFERENCIA|DEBITO|ARQC|AID|DSC|DESCUENTO|FARMACIA|SALCHICHONERIA|LACTEOS|PANIFICADORA|ALIMENTOS|REFIGERADOS|EMPACADA/i;
+  const IGNORE_PATTERNS = /TIENDAS|OXXO|WALMART|BODEGA|OFFICE|PEMEX|SAMS|COSTCO|SORIANA|ARTELI|HOME|LIVERPOOL|S\.?A\.?|C\.?V\.?|R\.?F\.?C\.?|SUC|BLVD|AV\.|CANT|ARTICULO|PRECIC|SUBTOTAL|TOTAL|AFILIACION|TARJETA|CAMBIO|AUT#|PROSA|SALDO|REBAJADO|AHORRO|IVA|IEPS|ATENDIO|OPINION|REDONDEO|REGIMEN|AVISO|PAGO|EFECTIVO|MENSAJE|GRACIAS|TASA|IMPORTE|CLIENTE|CAJERO|CODIGO|DEVOLUCIONES|PREFERENCIA|DEBITO|ARQC|AID|DEPARTAMENTO/i;
 
   let inItemsSection = true;
 
-  // 3. Extracción Semántica de Ítems
+  // 3. Extracción de Ítems Robusta y Tolerante a Descuentos
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
@@ -199,24 +166,30 @@ async function parseMexicanTicket(ocrText) {
     }
     if (!inItemsSection) continue;
 
-    if (line.endsWith('-') || /dsc|descuento|ahorro/i.test(line) || /^\d{8,14}$/.test(line)) {
+    // Omitir líneas de descuento explícitas o códigos de barras puros
+    if (line.endsWith('-') || /dsc|descuento|ahorro|%/.test(line) || /^\d{8,14}$/.test(line)) {
       continue;
     }
 
-    const numbersInLine = line.match(/([0-9]{1,3}(?:[,][0-9]{3})*[.,]\d{2})/g);
+    // Detectar líneas que parezcan productos (que contengan precios con decimales)
+    const priceMatches = line.match(/([0-9,]+\.\d{2})/g);
 
-    if (numbersInLine && numbersInLine.length > 0) {
-      const lineTotal = parseFloat(numbersInLine[numbersInLine.length - 1].replace(',', ''));
+    if (priceMatches && priceMatches.length > 0) {
+      // El último precio de la línea es el importe total real pagado por ese producto
+      const lineTotal = parseFloat(priceMatches[priceMatches.length - 1].replace(',', ''));
 
       let cleanedName = line;
-      for (const num of numbersInLine) {
-        cleanedName = cleanedName.replace(num, '');
+      for (const p of priceMatches) {
+        cleanedName = cleanedName.replace(p, '');
       }
+      // Limpiar cantidad inicial (ej: 1.000 o 4.000)
       cleanedName = cleanedName.replace(/^\s*\d+[.,]\d+\s*/, '');
+      // Limpiar letras de columna (A, B, K)
       cleanedName = cleanedName.replace(/\s+[A-Z]\s*$/, '');
+      // Limpiar caracteres especiales
       cleanedName = cleanedName.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
 
-      if (cleanedName.length >= 3 && !IGNORE_PATTERNS.test(cleanedName) && lineTotal > 0 && lineTotal < 1000) {
+      if (cleanedName.length >= 3 && !IGNORE_PATTERNS.test(cleanedName) && lineTotal > 0 && lineTotal < 1500) {
         const upperName = cleanedName.toUpperCase();
         if (!items.some(item => item.name === upperName)) {
           items.push({
@@ -233,13 +206,13 @@ async function parseMexicanTicket(ocrText) {
   }
 
   return {
-    concept: concept.toUpperCase(),
+    concept: 'CHEDRAUI',
     amount: Number(totalAmount.toFixed(2)) || 0,
     category: category,
-    description: `Ticket escaneado de ${concept}`,
+    description: 'Ticket escaneado de CHEDRAUI',
     items: items,
     date: ticketDate || new Date().toISOString().split('T')[0],
-    engine: learnedTemplate ? 'MOBILE_SEMANTIC_LEARNED' : 'MOBILE_SEMANTIC_ENGINE'
+    engine: 'MOBILE_CHEDRAUI_MASTER_PRO'
   };
 }
 
