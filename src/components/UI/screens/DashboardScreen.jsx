@@ -14,6 +14,8 @@ import { usePlayerManagement } from '../../../hooks/usePlayerManagement.js';
 import { useTransactionsManager } from '../../../hooks/useTransactionsManager.js';
 import { useQuickActionsManager } from '../../../hooks/useQuickActionsManager.js';
 
+// Servicios de IA y Radar de Precios
+import { analyzeAndUpdatePrices } from '../../../services/priceRadarService';
 // Componentes externos
 import DashboardHeader from '../../Expenses/DashboardHeader';
 import AddCustomButtonModal from '../../Expenses/AddCustomButtonModal';
@@ -31,7 +33,7 @@ import RecentTransactions from '../RecentTransactions.jsx';
 // Componentes de Navegación y Juegos
 import Navigation from '../Navigation.jsx';
 import GamesScreen from '../../Games/GamesScreen.jsx';
-import AnalyticsScreen from './AnalyticsScreen.jsx'; // 👈 Corregido a ruta local correcta
+import AnalyticsScreen from './AnalyticsScreen.jsx';
 
 const PRESET_ICONS = [
   '/charlie-market.png', '/finanzas.png', '/franklin-internet.png', '/gastos-medicos.png',
@@ -53,7 +55,6 @@ export default function DashboardScreen() {
   const [activeTab, setActiveTab] = useState('finances');
   const [currentUser, setCurrentUser] = useState(() => obtenerDeStorage(USER_CACHE_KEY, null));
   
-  // 🌟 Recuperar estado inicial desde localStorage para evitar pérdida al cambiar de pestaña
   const [auditorMode, setAuditorMode] = useState(() => obtenerDeStorage('family_auditor_mode', false));
   const [selectedAuditedUser, setSelectedAuditedUser] = useState(() => obtenerDeStorage('family_audited_user', null));
   
@@ -79,7 +80,6 @@ export default function DashboardScreen() {
     };
   }, []);
 
-  // 🌟 Sincronizar cambios de Modo Dios y Usuario Auditado en LocalStorage
   useEffect(() => {
     guardarEnStorage('family_auditor_mode', auditorMode);
   }, [auditorMode]);
@@ -88,7 +88,6 @@ export default function DashboardScreen() {
     guardarEnStorage('family_audited_user', selectedAuditedUser);
   }, [selectedAuditedUser]);
 
-  // 🌟 OBTENER EL USUARIO OBJETIVO EXACTO
   const targetUserForTx = useMemo(() => {
     if (!auditorMode) {
       return null;
@@ -111,7 +110,6 @@ export default function DashboardScreen() {
 
   const playerManager = usePlayerManagement(targetUserForTx, auditorMode);
 
-  // UUID limpio para metas de ahorro y agenda
   const targetUserIdForMetas = useMemo(() => {
     if (!auditorMode) {
       return currentUser?.id || '';
@@ -129,7 +127,6 @@ export default function DashboardScreen() {
     return foundUser ? foundUser.id : selectedAuditedUser;
   }, [auditorMode, selectedAuditedUser, currentUser, usersList]);
 
-  // Nombre para mostrar en los títulos, gráficas y agenda
   const resolvedDisplayName = useMemo(() => {
     if (auditorMode) {
       if (!selectedAuditedUser) {
@@ -149,7 +146,6 @@ export default function DashboardScreen() {
     return playerManager.activeUser || currentUser?.email?.split('@')[0] || 'USUARIO';
   }, [auditorMode, selectedAuditedUser, usersList, playerManager.activeUser, currentUser]);
 
-  // Objeto o identificador que se pasa a los hooks principales
   const effectiveUserForHooks = useMemo(() => {
     if (!auditorMode) {
       return playerManager.activeUser || currentUser?.email;
@@ -157,7 +153,6 @@ export default function DashboardScreen() {
     return targetUserForTx;
   }, [auditorMode, targetUserForTx, playerManager.activeUser, currentUser]);
 
-  // --- HOOKS PRINCIPALES ---
   const txManager = useTransactionsManager(
     effectiveUserForHooks,
     auditorMode,
@@ -167,7 +162,22 @@ export default function DashboardScreen() {
 
   const quickActionsManager = useQuickActionsManager(effectiveUserForHooks, auditorMode);
 
-  // Carga inicial de perfiles y sesión
+  useEffect(() => {
+    const handleGlobalRefresh = () => {
+      if (typeof txManager.fetchTransactions === 'function') {
+        txManager.fetchTransactions();
+      }
+    };
+
+    window.addEventListener('storage', handleGlobalRefresh);
+    window.addEventListener('refresh-financial-data', handleGlobalRefresh);
+
+    return () => {
+      window.removeEventListener('storage', handleGlobalRefresh);
+      window.removeEventListener('refresh-financial-data', handleGlobalRefresh);
+    };
+  }, [txManager]);
+
   useEffect(() => {
     const fetchUserAndProfiles = async () => {
       if (!navigator.onLine) {
@@ -207,10 +217,10 @@ export default function DashboardScreen() {
   const handleToggleAuditorMode = () => {
     const nextMode = !auditorMode;
     setAuditorMode(nextMode);
-    guardarEnStorage('family_auditor_mode', nextMode); // 👈 Persistencia inmediata
+    guardarEnStorage('family_auditor_mode', nextMode);
     if (!nextMode) {
       setSelectedAuditedUser(null);
-      guardarEnStorage('family_audited_user', null); // 👈 Limpiar storage al desactivar
+      guardarEnStorage('family_audited_user', null);
     }
   };
 
@@ -221,18 +231,32 @@ export default function DashboardScreen() {
     window.location.href = window.location.origin;
   };
 
-  const handleCustomButtonSubmit = (e) => {
+  // 🤖 Actualizado para recibir detectedItems y alimentar el Radar de Precios
+  const handleCustomButtonSubmit = async (e, detectedItems = []) => {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
+    
+    const conceptName = customName.trim().toUpperCase() || 'NUEVO';
     const payload = {
-      name: customName.trim().toUpperCase() || 'NUEVO',
+      name: conceptName,
       amount: Number(customAmount) || 0,
       category: customCategory.trim().toUpperCase() || 'VARIOS',
       icon: selectedIcon || PRESET_ICONS[0],
       type: quickActionsManager.modalType || 'expense'
     };
+
     if (typeof quickActionsManager.handleAddAction === 'function') {
       quickActionsManager.handleAddAction(payload, payload.type);
     }
+
+    // 🌟 Si la IA detectó ítems por dictado o texto, actualizamos el historial de precios en Supabase
+    if (detectedItems && detectedItems.length > 0) {
+      try {
+        await analyzeAndUpdatePrices(detectedItems, conceptName);
+      } catch (err) {
+        console.error('Error al actualizar el radar de precios:', err);
+      }
+    }
+
     setCustomName('');
     setCustomAmount('');
     setCustomCategory('VARIOS');
@@ -320,7 +344,7 @@ export default function DashboardScreen() {
             selectedAuditedUser={selectedAuditedUser}
             setSelectedAuditedUser={(user) => {
               setSelectedAuditedUser(user);
-              guardarEnStorage('family_audited_user', user); // 👈 Persistencia al cambiar usuario seleccionado
+              guardarEnStorage('family_audited_user', user);
             }}
           />
           

@@ -21,7 +21,7 @@ const fileToBase64 = (file) => {
           }
         } else {
           if (height > maxHeight) {
-            width = Math.round((width * maxHeight) / height);
+            width = Math.round((height * maxHeight) / height);
             height = maxHeight;
           }
         }
@@ -60,57 +60,81 @@ export const scanTicketOCR = async (file) => {
   const base64Data = await fileToBase64(file);
 
   const prompt = `
-    Analiza esta imagen de un ticket o recibo de compra. Extrae la información y devuelve un objeto JSON válido con exactamente estas tres llaves:
+    Analiza esta imagen de un ticket, factura o recibo de compra. Extrae la información y devuelve un objeto JSON válido con exactamente estas llaves:
     1. "amount": número flotante con el total exacto a pagar (ej: 150.50). Si no encuentras el total, pon 0.
-    2. "concept": el nombre del comercio, establecimiento o descripción del gasto (en MAYÚSCULAS).
+    2. "concept": el nombre del comercio, establecimiento o tienda donde se realizó la compra (en MAYÚSCULAS, ej: CHEDRAUI, WALMART, OXXO, etc.).
     3. "category": una categoría sugerida estrictamente de esta lista: ALIMENTOS, TRANSPORTE, SERVICIOS, ENTRETENIMIENTO, SALUD, SUPERMERCADO, HOGAR, OTROS (en MAYÚSCULAS).
+    4. "dueDate": fecha de vencimiento o límite de pago si aparece en formato "YYYY-MM-DD", de lo contrario null.
+    5. "returnPeriod": texto descriptivo del periodo de devolución si aplica (ej: "30 DÍAS"), de lo contrario null.
+    6. "warranty": texto descriptivo de la garantía si aplica (ej: "1 AÑO"), de lo contrario null.
+    7. "isBillOrInvoice": booleano (true si es recibo de servicios con fecha límite futura, false si es ticket normal).
+    8. "description": resumen breve del ticket o servicio.
+    9. "items": un arreglo (array) con los productos detectados. Cada objeto debe tener "name" (nombre del producto en mayúsculas) y "price" (número flotante con el precio unitario o total del artículo). Si no hay desglose, pon [].
     
     Ejemplo de formato requerido:
-    {"amount": 250.00, "concept": "SUPERAMA", "category": "SUPERMERCADO"}
+    {
+      "amount": 250.00,
+      "concept": "CHEDRAUI",
+      "category": "SUPERMERCADO",
+      "dueDate": null,
+      "returnPeriod": "30 DÍAS",
+      "warranty": null,
+      "isBillOrInvoice": false,
+      "description": "Compra de despensa",
+      "items": [
+        {"name": "LECHE ENTERA 1L", "price": 28.50},
+        {"name": "CAFÉ SOLUBLE", "price": 145.00}
+      ]
+    }
   `;
 
-  // Modelo requerido por la respuesta actual del servidor de Google AI
-  const modelsToTry = ['gemini-3.8-flash', 'gemini-1.5-flash'];
-  let lastError = null;
-
-  for (const modelName of modelsToTry) {
-    try {
-      console.log(`Intentando escanear ticket con el modelo: ${modelName}`);
-      const response = await ai.models.generateContent({
-        model: modelName,
-        contents: [
-          prompt,
-          {
-            inlineData: {
-              mimeType: 'image/jpeg',
-              data: base64Data
-            }
+  // Reducimos a 1 solo intento controlado para no rebasar los límites por minuto de la API gratuita
+  try {
+    console.log('Escaneando ticket con gemini-3.8-flash...');
+    
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents: [
+        prompt,
+        {
+          inlineData: {
+            mimeType: 'image/jpeg',
+            data: base64Data
           }
-        ],
-      });
+        }
+      ],
+    });
 
-      const textResponse = response.text ? response.text.trim() : '';
-      console.log(`Respuesta exitosa de ${modelName}:`, textResponse);
+    const textResponse = response.text ? response.text.trim() : '';
+    console.log('Respuesta exitosa:', textResponse);
 
-      const jsonMatch = textResponse.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('La respuesta de la IA no contiene JSON válido.');
-      }
-
-      const parsedData = JSON.parse(jsonMatch[0]);
-
-      return {
-        amount: Number(parsedData.amount) || 0,
-        concept: parsedData.concept ? String(parsedData.concept).toUpperCase() : 'COMPRA CON TICKET',
-        category: parsedData.category ? String(parsedData.category).toUpperCase() : 'OTROS',
-        rawText: textResponse
-      };
-
-    } catch (error) {
-      console.warn(`Falló el modelo ${modelName}:`, error.message);
-      lastError = error;
+    const jsonMatch = textResponse.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error('La respuesta de la IA no contiene JSON válido.');
     }
-  }
 
-  throw new Error(`Error al procesar el ticket: ${lastError?.message || 'La IA no pudo completar la solicitud.'}`);
+    const parsedData = JSON.parse(jsonMatch[0]);
+
+    return {
+      amount: Number(parsedData.amount) || 0,
+      concept: parsedData.concept ? String(parsedData.concept).toUpperCase() : 'COMPRA CON TICKET',
+      category: parsedData.category ? String(parsedData.category).toUpperCase() : 'OTROS',
+      dueDate: parsedData.dueDate || null,
+      returnPeriod: parsedData.returnPeriod || null,
+      warranty: parsedData.warranty || null,
+      isBillOrInvoice: Boolean(parsedData.isBillOrInvoice),
+      description: parsedData.description || '',
+      items: Array.isArray(parsedData.items) ? parsedData.items : [],
+      rawText: textResponse
+    };
+
+  } catch (error) {
+    console.error('Error al procesar el ticket:', error);
+    
+    if (error?.message?.includes('429') || error?.message?.includes('quota')) {
+      throw new Error('Límite de solicitudes excedido (Error 429). Espera unos 30 segundos antes de volver a escanear otro ticket para respetar la cuota gratuita.');
+    }
+
+    throw new Error(`Error al procesar el ticket: ${error?.message || 'La IA no pudo completar la solicitud.'}`);
+  }
 };

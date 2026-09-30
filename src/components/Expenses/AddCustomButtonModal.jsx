@@ -3,6 +3,7 @@ import { manejarInputMayusculas } from '../../utils/mayusculas.js';
 import { supabase } from '../../supabaseClient';
 import { obtenerDeStorage } from '../../utils/storage.js';
 import CategoryManager from '../CategoryManager';
+import { parseNaturalLanguageExpense } from '../../services/aiParserService'; // 🤖 Importamos el servicio de IA
 
 export default function AddCustomButtonModal({ 
   onClose, 
@@ -22,6 +23,12 @@ export default function AddCustomButtonModal({
   const [internalAmount, setInternalAmount] = useState(amount);
   const [internalCat, setInternalCat] = useState(cat);
   const [internalDate, setInternalDate] = useState(date);
+  
+  // 🎙️ Estados nuevos para la asistencia por IA y Dictado
+  const [aiPromptText, setAiPromptText] = useState('');
+  const [isListening, setIsListening] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [detectedItems, setDetectedItems] = useState([]);
 
   const [categories, setCategories] = useState(() => 
     obtenerDeStorage('family_categories_cache', [])
@@ -57,6 +64,76 @@ export default function AddCustomButtonModal({
   useEffect(() => {
     fetchCategories();
   }, []);
+
+  // 🎙️ Función para iniciar el reconocimiento de voz nativo del navegador
+  const handleStartVoiceDictation = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert('Tu navegador no soporta el dictado por voz. Puedes escribir tu gasto abajo.');
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'es-MX';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      setIsListening(true);
+    };
+
+    recognition.onresult = (event) => {
+      const speechToText = event.results[0][0].transcript;
+      setAiPromptText(speechToText);
+      setIsListening(false);
+      // Auto-procesamos con IA al terminar de hablar
+      handleProcessWithAI(speechToText);
+    };
+
+    recognition.onerror = (event) => {
+      console.error('Error en reconocimiento de voz:', event.error);
+      setIsListening(false);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognition.start();
+  };
+
+  // 🤖 Procesar texto libre o dictado con IA
+  const handleProcessWithAI = async (textToProcess = aiPromptText) => {
+    if (!textToProcess.trim()) return;
+    setIsAnalyzing(true);
+    try {
+      const result = await parseNaturalLanguageExpense(textToProcess);
+      
+      if (result) {
+        // Llenamos automáticamente los campos con lo que extrajo la IA
+        setInternalName(result.concept);
+        if (typeof setName === 'function') setName(result.concept);
+
+        setInternalAmount(result.amount);
+        if (typeof setAmount === 'function') setAmount(result.amount);
+
+        if (result.category) {
+          setInternalCat(result.category);
+          if (typeof setCat === 'function') setCat(result.category);
+        }
+
+        // Guardamos los items detectados para enviarlos al radar de precios en el submit
+        if (result.items && result.items.length > 0) {
+          setDetectedItems(result.items);
+        }
+      }
+    } catch (error) {
+      console.error('Error procesando con IA:', error);
+      alert('No pudimos interpretar el gasto con IA. Puedes llenar los datos manualmente.');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
 
   const handleChooseIcon = (iconUrl, index) => {
     setSelectedIconIdx(index);
@@ -134,8 +211,10 @@ export default function AddCustomButtonModal({
     if (e && typeof e.preventDefault === 'function') {
       e.preventDefault();
     }
+    
+    // 🌟 Enviamos tanto el evento como los ítems detectados de la IA para alimentar el Radar de Precios
     if (typeof onSubmit === 'function') {
-      onSubmit(e);
+      onSubmit(e, detectedItems);
     }
   };
 
@@ -153,6 +232,45 @@ export default function AddCustomButtonModal({
             >
               ✕
             </button>
+          </div>
+
+          {/* 🤖 NUEVA SECCIÓN: Asistente de Dictado y Texto Inteligente con IA */}
+          <div className="p-3 bg-sky-50 border-2 border-black rounded-2xl space-y-2">
+            <label className="block text-[10px] font-black uppercase text-sky-900">
+              🎙️ Registro Rápido por Voz o IA
+            </label>
+            <div className="flex gap-2">
+              <input 
+                type="text" 
+                placeholder="Ej: Compré leche a 35 y pan a 40 en OXXO" 
+                value={aiPromptText}
+                onChange={(e) => setAiPromptText(e.target.value)}
+                className="flex-1 px-3 py-1.5 border-2 border-black rounded-xl text-xs font-bold text-black bg-white focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={handleStartVoiceDictation}
+                className={`px-3 py-1.5 border-2 border-black rounded-xl font-black text-xs cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 ${
+                  isListening ? 'bg-red-400 animate-pulse' : 'bg-amber-300 hover:bg-amber-400'
+                }`}
+                title="Dictar por voz"
+              >
+                {isListening ? '🔴 Escuchando...' : '🎤 Hablar'}
+              </button>
+            </div>
+            <div className="flex justify-between items-center pt-1">
+              <span className="text-[9px] font-bold text-stone-600">
+                {detectedItems.length > 0 ? `✨ ${detectedItems.length} ítems detectados para el radar` : 'Habla o escribe para rellenar con IA'}
+              </span>
+              <button
+                type="button"
+                disabled={isAnalyzing || !aiPromptText.trim()}
+                onClick={() => handleProcessWithAI(aiPromptText)}
+                className="px-3 py-1 bg-emerald-300 hover:bg-emerald-400 disabled:bg-stone-200 text-black border-2 border-black rounded-lg text-[10px] font-black uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+              >
+                {isAnalyzing ? 'Analizando...' : '✨ Autorellenar'}
+              </button>
+            </div>
           </div>
 
           <form onSubmit={handleFormSubmit} className="space-y-4 pt-2">

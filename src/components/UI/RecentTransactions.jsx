@@ -2,6 +2,18 @@ import React, { useState, useMemo } from 'react';
 import { formatearMoneda } from '../../utils/moneda.js';
 import PDFPreviewModal from './PDFPreviewModal.jsx';
 
+// 🟢 Helper para identificar si la transacción proviene de un ticket escaneado por IA
+const isTicketTransaction = (tx) => {
+  const conceptUpper = (tx.concept || tx.category || '').toUpperCase();
+  const descUpper = (tx.description || '').toUpperCase();
+  return Boolean(
+    (tx.items && Array.isArray(tx.items) && tx.items.length > 0) ||
+    tx.is_ticket === true ||
+    /TICKET|CHEDRAUI|WALMART|OXXO|COSTCO|SORIANA|SUPER|OCR|ESCANEO/i.test(conceptUpper) ||
+    /TICKET|OCR|ESCANEO/i.test(descUpper)
+  );
+};
+
 // 🟢 Helper ultra seguro para mostrar fecha y hora local exacta sin desfases de UTC
 const formatearFechaLimpia = (tx) => {
   const rawDate = tx.transaction_date || tx.created_at;
@@ -37,7 +49,7 @@ const formatearFechaLimpia = (tx) => {
 };
 
 export default function RecentTransactions({ transactions = [], onDelete, onUpdate }) {
-  const [filter, setFilter] = useState('all'); // 'all' | 'savings' | 'expense' | 'income' | 'retro-expense' | 'retro-income'
+  const [filter, setFilter] = useState('all'); // 'all' | 'tickets' | 'savings' | 'expense' | 'income' | 'retro-expense' | 'retro-income'
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   // Estados Modal Edición
@@ -108,11 +120,13 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
     return dateB - dateA;
   });
 
-  // Filtrar transacciones según la pestaña seleccionada utilizando estrictamente is_retroactive
+  // Filtrar transacciones según la pestaña seleccionada
   const filteredTransactions = sortedTransactions.filter((tx) => {
     const isSavings = tx.category === 'AHORRO' || tx.concept?.includes('Abono a meta');
     const isRetroactive = Boolean(tx.is_retroactive);
+    const isTicket = isTicketTransaction(tx);
 
+    if (filter === 'tickets') return isTicket;
     if (filter === 'savings') return isSavings;
     if (filter === 'expense') return !isSavings && tx.transaction_type === 'expense';
     if (filter === 'income') return !isSavings && tx.transaction_type === 'income';
@@ -177,6 +191,16 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
               </button>
               <button
                 type="button"
+                onClick={() => setFilter('tickets')}
+                className={`px-2 py-1 text-[10px] font-black uppercase rounded-xl transition-all cursor-pointer ${
+                  filter === 'tickets' ? 'bg-purple-500 text-white shadow font-black' : 'bg-transparent text-purple-800 hover:bg-purple-100'
+                }`}
+                title="Filtrar Tickets Escaneados"
+              >
+                🎟️ Tickets
+              </button>
+              <button
+                type="button"
                 onClick={() => setFilter('savings')}
                 className={`px-2 py-1 text-[10px] font-black uppercase rounded-xl transition-all cursor-pointer ${
                   filter === 'savings' ? 'bg-blue-500 text-white shadow' : 'bg-transparent text-blue-700 hover:bg-blue-100'
@@ -228,6 +252,7 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
 
         {/* 🌟 BARRA DE SUMA TOTAL CON SIGNO Y COLOR ADECUADO */}
         <div className={`p-3 border-2 border-black rounded-2xl flex justify-between items-center text-xs font-black uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${
+          filter === 'tickets' ? 'bg-purple-100 text-purple-950' :
           filter === 'savings' ? 'bg-blue-100 text-blue-950' :
           filter === 'expense' ? 'bg-rose-100 text-rose-950' :
           filter === 'income' ? 'bg-emerald-100 text-emerald-950' :
@@ -237,6 +262,7 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
         }`}>
           <span>
             {filter === 'all' ? '⚖️ Balance Neto General:' : `Total (${
+              filter === 'tickets' ? 'Tickets' :
               filter === 'savings' ? 'Ahorros' : 
               filter === 'expense' ? 'Egresos' : 
               filter === 'income' ? 'Ingresos' :
@@ -264,6 +290,7 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
               const isSavings = tx.category === 'AHORRO' || tx.concept?.includes('Abono a meta');
               
               const isRetroactive = Boolean(tx.is_retroactive);
+              const isTicket = isTicketTransaction(tx);
               const formattedDate = formatearFechaLimpia(tx);
 
               let dotColor = 'bg-rose-500';
@@ -295,6 +322,13 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
                           isIncome ? 'bg-yellow-300 text-black' : 'bg-orange-400 text-black'
                         }`}>
                           {isIncome ? 'Ingreso Retroactivo' : 'Egresos Retroactivo'}
+                        </span>
+                      )}
+
+                      {/* 🎟️ ETIQUETA DE TICKET */}
+                      {isTicket && (
+                        <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md border border-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] bg-purple-300 text-purple-950">
+                          🎟️ Ticket
                         </span>
                       )}
                     </div>

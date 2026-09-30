@@ -62,7 +62,7 @@ export function useTransactionsManager(activeUser, auditorMode, isMasterAuditor,
               }
             }
 
-            // 2. Si activeUser era un nombre (ej. "IVONNE" o "MARY JOSE"), mapearlo con los UUIDs oficiales que me diste
+            // 2. Si activeUser era un nombre (ej. "IVONNE" o "MARY JOSE"), mapearlo con los UUIDs oficiales
             if (!targetUuid && typeof activeUser === 'string') {
               const nameUpper = activeUser.toUpperCase().trim();
               if (nameUpper.includes('IVONNE')) {
@@ -137,8 +137,25 @@ export function useTransactionsManager(activeUser, auditorMode, isMasterAuditor,
     }
   }, [activeUser, auditorMode, isMasterAuditor, customUsers]);
 
+  // 🌟 Sincronización profesional en tiempo real mediante Supabase Realtime (WebSockets)
   useEffect(() => {
     fetchTransactionsAndTotals();
+
+    const channel = supabase
+      .channel('public:transactions-realtime-sync')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'transactions' },
+        (payload) => {
+          console.log('⚡ Cambio detectado en tiempo real en Supabase:', payload);
+          fetchTransactionsAndTotals();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [fetchTransactionsAndTotals]);
 
   const handleSaveTransaction = async (data, type) => {
@@ -164,6 +181,7 @@ export function useTransactionsManager(activeUser, auditorMode, isMasterAuditor,
         is_retroactive: isRetroactiveVal
       });
 
+      // El realtime actualizará automáticamente, pero mantenemos la llamada por agilidad local
       await fetchTransactionsAndTotals();
       if (inserted) {
         setLastSavedTx(inserted);

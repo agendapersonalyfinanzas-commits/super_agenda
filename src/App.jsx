@@ -12,9 +12,7 @@ import AnalyticsScreen from './components/UI/screens/AnalyticsScreen.jsx';
 import GameScreen from './components/Games/GamesScreen.jsx';
 import Navigation from './components/UI/Navigation.jsx';
 
-// 🌟 Importación de las vistas y componentes de Finanzas / OCR
-import FinanzasView from './components/FinanzasView.jsx';
-import MetricasView from './components/MetricasView.jsx';
+// 🌟 Importación del escáner de OCR
 import OCRScanner from './components/Expenses/OCRScanner.jsx';
 
 // Imagen estática desde la carpeta public
@@ -318,17 +316,9 @@ export default function App() {
 
       {/* RENDERIZADO DE LAS PANTALLAS CON SOPORTE DE MODO DIOS */}
       <main className="p-4">
-        {/* Usamos FinanzasView para la pestaña de finanzas y le añadimos las métricas debajo o integradas según tu diseño */}
+        {/* 🌟 VISTA PRINCIPAL LIMPIA: Únicamente DashboardScreen con sus botones, metas y movimientos recientes */}
         {activeTab === 'finances' && (
-          <div className="space-y-6 max-w-xl mx-auto">
-            <DashboardScreen />
-            <div className="border-t-4 border-black pt-6">
-              <MetricasView />
-            </div>
-            <div className="border-t-4 border-black pt-6">
-              <FinanzasView />
-            </div>
-          </div>
+          <DashboardScreen />
         )}
 
         {activeTab === 'agenda' && (
@@ -366,7 +356,6 @@ export default function App() {
           onClose={() => setShowScanner(false)} 
           onScanSuccess={(nuevoGasto) => {
             console.log('Gasto escaneado y guardado correctamente:', nuevoGasto);
-            // Forzar un evento de storage para que FinanzasView y MetricasView se actualicen al instante
             window.dispatchEvent(new Event('storage'));
           }} 
         />

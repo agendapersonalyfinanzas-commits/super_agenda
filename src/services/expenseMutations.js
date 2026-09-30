@@ -12,7 +12,7 @@ const getLocalDate = () => {
   return `${year}-${month}-${day}`;
 };
 
-export async function saveTransaction({ transactionType, amount, category, concept, userName, date, transaction_date, is_retroactive }) {
+export async function saveTransaction({ transactionType, amount, category, concept, userName, date, transaction_date, is_retroactive, items, description }) {
   const { data: { session } } = await supabase.auth.getSession();
   const user = session?.user;
 
@@ -42,7 +42,9 @@ export async function saveTransaction({ transactionType, amount, category, conce
     auth_user_email: user.email, 
     user_id: user.id,
     transaction_date: finalDate, 
-    is_retroactive: Boolean(is_retroactive)
+    is_retroactive: Boolean(is_retroactive),
+    ...(items ? { items } : {}),
+    ...(description ? { description } : {})
   };
 
   const { data, error } = await supabase

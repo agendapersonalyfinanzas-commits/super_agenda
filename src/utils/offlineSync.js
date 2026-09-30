@@ -1,6 +1,5 @@
 // src/utils/offlineSync.js
 
-// ¡Ajusta esta ruta hacia donde tengas configurado tu cliente de Supabase!
 import { supabase } from '../supabaseClient'; 
 import { guardarEnStorage, obtenerDeStorage } from './storage';
 
@@ -11,7 +10,7 @@ const OFFLINE_QUEUE_KEY = 'family_offline_queue';
  * Agrega una operación a la cola cuando no hay internet.
  * @param {string} action - 'INSERT', 'UPDATE', o 'DELETE'
  * @param {string} table - Nombre de la tabla en Supabase (ej. 'agenda_events', 'transactions')
- * @param {object} payload - Los datos completos (ya deben incluir user_id, household_id, auth_user_email, etc.)
+ * @param {object} payload - Los datos completos (deben incluir auth_user_email para RLS)
  */
 export const agregarAColaOffline = async (action, table, payload) => {
   try {
@@ -27,6 +26,9 @@ export const agregarAColaOffline = async (action, table, payload) => {
 
     guardarEnStorage(OFFLINE_QUEUE_KEY, queue);
     console.log(`[Offline Sync] Operación ${action} en la tabla '${table}' encolada localmente.`);
+
+    // Notificamos opcionalmente a la UI local para que pinte el cambio en estado "pendiente"
+    window.dispatchEvent(new CustomEvent('refresh-financial-data'));
   } catch (error) {
     console.error("[Offline Sync] Error al encolar operación offline:", error);
   }
@@ -37,7 +39,6 @@ export const agregarAColaOffline = async (action, table, payload) => {
  * Se ejecuta automáticamente cuando regresa el internet.
  */
 export const procesarColaOffline = async () => {
-  // 1. Verificamos si realmente hay conexión a internet
   if (!navigator.onLine) return;
 
   const queue = obtenerDeStorage(OFFLINE_QUEUE_KEY, []);
@@ -45,54 +46,58 @@ export const procesarColaOffline = async () => {
 
   console.log(`[Offline Sync] Regresó la conexión. Procesando ${queue.length} operaciones pendientes...`);
   
-  const pendingQueue = []; // Guardaremos aquí las que fallen para no perderlas
+  const pendingQueue = [];
+  let sincronizadosConExito = 0;
 
   for (const item of queue) {
     try {
       const { action, table, payload } = item;
       let error = null;
 
-      // 2. Procesamos dependiendo del tipo de acción
       if (action === 'INSERT') {
-        // En inserciones, le pasamos el payload exacto que vino del componente
         const { error: insertError } = await supabase.from(table).insert([payload]);
         error = insertError;
       } 
       else if (action === 'UPDATE') {
-        // En actualizaciones, sacamos el 'id' para buscar la fila y actualizamos el resto
         const { id, ...updateData } = payload;
         const { error: updateError } = await supabase.from(table).update(updateData).eq('id', id);
         error = updateError;
       } 
       else if (action === 'DELETE') {
-        // En borrado, solo necesitamos el 'id'
         const { error: deleteError } = await supabase.from(table).delete().eq('id', payload.id);
         error = deleteError;
       }
 
-      // 3. Manejo de Errores de Supabase
       if (error) {
         console.error(`[Offline Sync] Supabase rechazó el ${action} en '${table}':`, error.message);
-        
-        // Si el error es un problema de red persistente, la volvemos a encolar.
-        // Si es un error de RLS (403) significa que los datos inyectados fueron incorrectos, 
-        // podrías descartarla aquí si quieres, pero por seguridad la devolvemos a la cola.
         pendingQueue.push(item);
       } else {
+        sincronizadosConExito++;
         console.log(`[Offline Sync] ✅ Éxito subiendo a la nube: ${action} en '${table}'`);
       }
     } catch (err) {
-      console.error("[Offline Sync] Fallo catastrófico al intentar sincronizar un item:", err);
-      pendingQueue.push(item); // Lo devolvemos a la cola para no perder datos
+      console.error("[Offline Sync] Fallo al intentar sincronizar item:", err);
+      pendingQueue.push(item);
     }
   }
 
-  // 4. Actualizamos el Storage: limpiamos los exitosos y dejamos los que fallaron
+  // Actualizar Storage con los pendientes
   guardarEnStorage(OFFLINE_QUEUE_KEY, pendingQueue);
   
-  if (pendingQueue.length === 0) {
-    console.log("[Offline Sync] ✨ Sincronización completada. La cola está vacía.");
-  } else {
-    console.warn(`[Offline Sync] ⚠️ Quedaron ${pendingQueue.length} operaciones pendientes (posible bloqueo RLS o red inestable).`);
+  if (sincronizadosConExito > 0) {
+    console.log(`[Offline Sync] ✨ Se sincronizaron ${sincronizadosConExito} registros con Supabase.`);
+    // 🌟 REQUISITO CLAVE: Forzar a las vistas a pedir los datos limpios a la BD
+    window.dispatchEvent(new CustomEvent('refresh-financial-data'));
+  }
+
+  if (pendingQueue.length > 0) {
+    console.warn(`[Offline Sync] ⚠️️ Quedaron ${pendingQueue.length} operaciones pendientes.`);
   }
 };
+
+// 🌟 Escuchador automático: Cuando el navegador detecta conexión, procesa la cola
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    procesarColaOffline();
+  });
+}
