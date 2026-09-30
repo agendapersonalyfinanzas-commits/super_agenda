@@ -1,3 +1,5 @@
+// src/components/Expenses/RecentTransactions.jsx
+
 import React, { useState, useMemo } from 'react';
 import { formatearMoneda } from '../../utils/moneda.js';
 import PDFPreviewModal from './PDFPreviewModal.jsx';
@@ -19,13 +21,11 @@ const formatearFechaLimpia = (tx) => {
   const rawDate = tx.transaction_date || tx.created_at;
   if (!rawDate) return '';
 
-  // Extraemos la parte de la fecha (YYYY-MM-DD) directamente como texto para evitar el salto de zona horaria
   const dateStr = typeof rawDate === 'string' ? rawDate.split('T')[0].split(' ')[0] : '';
 
   if (dateStr && dateStr.length === 10 && dateStr.includes('-')) {
     const [anio, mes, dia] = dateStr.split('-');
 
-    // Si además tiene hora registrada distinta de medianoche
     if (typeof rawDate === 'string' && (rawDate.includes('T') || rawDate.includes(' '))) {
       const fecha = new Date(rawDate);
       if (!isNaN(fecha)) {
@@ -72,12 +72,12 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
     setEditAmount(tx.amount.toString());
     setEditType(tx.transaction_type || 'expense');
     
-    // Extraemos limpiamente la fecha YYYY-MM-DD para el input de fecha
     const rawDate = tx.transaction_date || tx.created_at;
     const cleanDateStr = rawDate ? rawDate.split('T')[0].split(' ')[0] : new Date().toISOString().split('T')[0];
     setEditDate(cleanDateStr);
 
-    setEditRetroactive(Boolean(tx.is_retroactive));
+    const todayStr = new Date().toISOString().split('T')[0];
+    setEditRetroactive(Boolean(tx.is_retroactive) || cleanDateStr < todayStr);
     setEditModalOpen(true);
   };
 
@@ -86,7 +86,6 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
     const parsedAmount = Number(editAmount);
     
     if (!isNaN(parsedAmount) && parsedAmount > 0 && onUpdate && editTx) {
-      // 🟢 Blindamos la fecha con T12:00:00 para que UTC nunca la devuelva al día anterior
       const safeTransactionDate = editDate.includes('T') ? editDate : `${editDate}T12:00:00`;
 
       onUpdate(editTx.id, {
@@ -100,7 +99,6 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
     setEditModalOpen(false);
   };
 
-  // --- MANEJADORES ELIMINACIÓN ---
   const handleStartDelete = (tx) => {
     setTxToDelete(tx);
     setDeleteModalOpen(true);
@@ -113,17 +111,19 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
     setDeleteModalOpen(false);
   };
 
-  // 🌟 Ordenar transacciones de más reciente a más antigua basándose en la fecha contable (transaction_date)
+  // 🌟 Ordenar cronológicamente por transaction_date
   const sortedTransactions = [...transactions].sort((a, b) => {
     const dateA = new Date(a.transaction_date || a.created_at || 0);
     const dateB = new Date(b.transaction_date || b.created_at || 0);
     return dateB - dateA;
   });
 
-  // Filtrar transacciones según la pestaña seleccionada
   const filteredTransactions = sortedTransactions.filter((tx) => {
     const isSavings = tx.category === 'AHORRO' || tx.concept?.includes('Abono a meta');
-    const isRetroactive = Boolean(tx.is_retroactive);
+    
+    const todayStr = new Date().toISOString().split('T')[0];
+    const txDateStr = (tx.transaction_date || tx.created_at || '').split('T')[0];
+    const isRetroactive = Boolean(tx.is_retroactive) || (txDateStr && txDateStr < todayStr);
     const isTicket = isTicketTransaction(tx);
 
     if (filter === 'tickets') return isTicket;
@@ -132,10 +132,10 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
     if (filter === 'income') return !isSavings && tx.transaction_type === 'income';
     if (filter === 'retro-expense') return !isSavings && tx.transaction_type === 'expense' && isRetroactive;
     if (filter === 'retro-income') return !isSavings && tx.transaction_type === 'income' && isRetroactive;
-    return true; // 'all'
+    return true;
   });
 
-  // 🌟 Cálculo inteligente del total: Balance Neto en 'all', o suma específica en filtros
+  // 🌟 Cálculo inteligente del total (Los tickets ahora suman negativamente como egresos)
   const totalFilteredAmount = useMemo(() => {
     if (filter === 'all') {
       return filteredTransactions.reduce((acc, tx) => {
@@ -143,6 +143,8 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
         const isIncome = tx.transaction_type === 'income' && !(tx.category === 'AHORRO' || tx.concept?.includes('Abono a meta'));
         return isIncome ? acc + amount : acc - amount;
       }, 0);
+    } else if (filter === 'tickets') {
+      return filteredTransactions.reduce((acc, tx) => acc - Number(tx.amount || 0), 0);
     } else {
       return filteredTransactions.reduce((acc, tx) => acc + Number(tx.amount || 0), 0);
     }
@@ -152,8 +154,7 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
     return null;
   }
 
-  // 🟢 Determinamos si el total actual debe mostrarse en rojo y con signo negativo (Egresos)
-  const isExpenseFilter = filter === 'expense' || filter === 'retro-expense';
+  const isExpenseFilter = filter === 'expense' || filter === 'retro-expense' || filter === 'tickets';
   const isNegativeBalance = filter === 'all' && totalFilteredAmount < 0;
   const showRedNegative = isExpenseFilter || isNegativeBalance;
 
@@ -161,14 +162,12 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
     <>
       <div className="border-4 border-black bg-white p-5 rounded-3xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-4 font-mono">
         
-        {/* CABECERA CON TÍTULO Y BOTONES DE FILTRO */}
         <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-3 border-b-2 border-black pb-3">
           <div>
             <h3 className="text-xs font-black uppercase text-black">🕒 Historial Últimos Movimientos</h3>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto justify-between xl:justify-end">
-            {/* Botón que abre la vista previa con Zoom */}
             <button
               type="button"
               onClick={() => setIsPreviewOpen(true)}
@@ -178,7 +177,6 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
               <span>🔍 📥 PDF (Zoom)</span>
             </button>
 
-            {/* Botones de filtro rápido con la misma estética unificada */}
             <div className="flex items-center gap-1 bg-stone-100 p-1 border-2 border-black rounded-2xl flex-wrap">
               <button
                 type="button"
@@ -197,7 +195,7 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
                 }`}
                 title="Filtrar Tickets Escaneados"
               >
-                🎟️ Tickets
+                🎟️️ Tickets
               </button>
               <button
                 type="button"
@@ -250,7 +248,6 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
           </div>
         </div>
 
-        {/* 🌟 BARRA DE SUMA TOTAL CON SIGNO Y COLOR ADECUADO */}
         <div className={`p-3 border-2 border-black rounded-2xl flex justify-between items-center text-xs font-black uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${
           filter === 'tickets' ? 'bg-purple-100 text-purple-950' :
           filter === 'savings' ? 'bg-blue-100 text-blue-950' :
@@ -270,11 +267,9 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
             }):`}
           </span>
           <span className={`text-sm font-black ${showRedNegative ? 'text-rose-600' : ''}`}>
-            {isExpenseFilter && totalFilteredAmount > 0 
-              ? `-${formatearMoneda(totalFilteredAmount)}`
-              : isNegativeBalance
-                ? `-${formatearMoneda(Math.abs(totalFilteredAmount))}`
-                : formatearMoneda(totalFilteredAmount)}
+            {totalFilteredAmount < 0 
+              ? `-${formatearMoneda(Math.abs(totalFilteredAmount))}`
+              : formatearMoneda(totalFilteredAmount)}
           </span>
         </div>
 
@@ -289,7 +284,10 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
               const isIncome = tx.transaction_type === 'income';
               const isSavings = tx.category === 'AHORRO' || tx.concept?.includes('Abono a meta');
               
-              const isRetroactive = Boolean(tx.is_retroactive);
+              const todayStr = new Date().toISOString().split('T')[0];
+              const txDateStr = (tx.transaction_date || tx.created_at || '').split('T')[0];
+              const isRetroactive = Boolean(tx.is_retroactive) || (txDateStr && txDateStr < todayStr);
+              
               const isTicket = isTicketTransaction(tx);
               const formattedDate = formatearFechaLimpia(tx);
 
@@ -325,7 +323,6 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
                         </span>
                       )}
 
-                      {/* 🎟️ ETIQUETA DE TICKET */}
                       {isTicket && (
                         <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md border border-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] bg-purple-300 text-purple-950">
                           🎟️ Ticket
@@ -362,7 +359,7 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
                         title="Eliminar registro"
                         className="bg-red-500 text-white border-2 border-black w-7 h-7 rounded-xl font-black flex items-center justify-center text-xs cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:scale-105 transition-transform"
                       >
-                        🗑️
+                        🗑
                       </button>
                     </div>
                   </div>
@@ -428,7 +425,6 @@ export default function RecentTransactions({ transactions = [], onDelete, onUpda
                 />
               </div>
 
-              {/* Casilla de control retroactivo en edición */}
               <div className="flex items-center gap-2 bg-white/60 border-2 border-black p-3 rounded-xl shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
                 <input
                   type="checkbox"

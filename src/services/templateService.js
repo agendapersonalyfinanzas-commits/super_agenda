@@ -31,7 +31,7 @@ export async function obtenerPlantillaLocalYNube(storeName) {
           .from('store_templates')
           .select('template_rules')
           .eq('store_name', normalizedStore)
-          .single();
+          .maybeSingle(); // 👈 CAMBIO CLAVE: .maybeSingle() evita el error 406 si la tienda no existe
 
         if (data && !error && data.template_rules) {
           // Guardar en caché local para futuros escaneos offline

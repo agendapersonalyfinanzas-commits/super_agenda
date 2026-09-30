@@ -34,7 +34,6 @@ export async function parseExpenseInput(inputData, onProgress) {
       console.log('📄 TEXTO OCR MÉXICO RECIBIDO:\n', text);
 
       if (text && text.trim().length > 0) {
-        // CORRECCIÓN CLAVE: Se agregó el 'await' para esperar la resolución de la función asíncrona
         return await parseMexicanTicket(text);
       }
     } else if (typeof inputData === 'string') {
@@ -50,6 +49,7 @@ export async function parseExpenseInput(inputData, onProgress) {
     category: 'OTROS',
     description: 'Ticket escaneado (Modo manual)',
     items: [],
+    date: new Date().toISOString().split('T')[0],
     engine: 'FALLBACK'
   };
 }
@@ -63,9 +63,9 @@ async function parseMexicanTicket(ocrText) {
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
 
-  let concept = 'CHEDRAUI';
+  let concept = 'COMPRA GENERAL';
   let totalAmount = 0;
-  let category = 'SUPERMERCADO';
+  let category = 'OTROS';
   const items = [];
 
   // Diccionario exclusivo de comercios en México
@@ -84,21 +84,48 @@ async function parseMexicanTicket(ocrText) {
     { pattern: /OFFICEMAX/i, name: 'OFFICEMAX', cat: 'HOGAR' },
     { pattern: /OFFICE\s*DEPOT/i, name: 'OFFICE DEPOT', cat: 'HOGAR' },
     { pattern: /PEMEX|ESTACION\s*DE\s*SERVICIO/i, name: 'PEMEX (GASOLINERÍA)', cat: 'TRANSPORTE' },
-    { pattern: /FARMACIA|GUADALAJARA|SIMILARES/i, name: 'FARMACIA', cat: 'SALUD' }
+    { pattern: /FARMACIA|FARMACIAS|GUADALAJARA|SIMILARES|POZA\s*RICA/i, name: 'FARMACIA', cat: 'SALUD' }
   ];
 
+  // 1. Extracción del nombre raíz antes de la coma
   for (const line of lines) {
     for (const store of STORE_DICTIONARY) {
       if (store.pattern.test(line)) {
-        concept = store.name;
+        let cleanMerchantName = line.includes(',') ? line.split(',')[0].trim() : line;
+        concept = (cleanMerchantName.length >= 3 && cleanMerchantName.length <= 45) ? cleanMerchantName.toUpperCase() : store.name;
         category = store.cat;
         break;
       }
     }
-    if (concept !== 'CHEDRAUI') break;
+    if (concept !== 'COMPRA GENERAL') break;
   }
 
-  // 🧠 Consulta de Memoria Híbrida de forma segura
+  // 2. Extracción ultra robusta de la Fecha del Ticket (Tolera espacios de Tesseract ej: 28 / SEP. / 2026)
+  let ticketDate = null;
+  const MONTH_MAP = {
+    'ENE': '01', 'FEB': '02', 'MAR': '03', 'ABR': '04', 'MAY': '05', 'JUN': '06',
+    'JUL': '07', 'AGO': '08', 'SEP': '09', 'OCT': '10', 'NOV': '11', 'DIC': '12',
+    'JAN': '01', 'APR': '04', 'AUG': '08', 'DEC': '12'
+  };
+
+  for (const line of lines) {
+    // 🧠 Regex con \s* antes y después de separadores para ignorar espacios de OCR
+    const dateMatch = line.match(/(\d{1,2})\s*[\/\-\.]\s*([A-Z]{3,4}\.?|\d{1,2})\s*[\/\-\.]?\s*(\d{2,4})/i);
+    if (dateMatch) {
+      let day = dateMatch[1].padStart(2, '0');
+      let monthRaw = dateMatch[2].toUpperCase().replace(/\./g, '');
+      let year = dateMatch[3];
+      if (year.length === 2) year = '20' + year;
+
+      let month = MONTH_MAP[monthRaw] || monthRaw.padStart(2, '0');
+      if (parseInt(month) >= 1 && parseInt(month) <= 12 && parseInt(day) >= 1 && parseInt(day) <= 31) {
+        ticketDate = `${year}-${month}-${day}`;
+        break;
+      }
+    }
+  }
+
+  // 🧠 Consulta de Memoria Híbrida usando el concepto limpio
   let learnedTemplate = null;
   try {
     learnedTemplate = await obtenerPlantillaLocalYNube(concept);
@@ -109,7 +136,7 @@ async function parseMexicanTicket(ocrText) {
     console.warn('No se pudo cargar plantilla aprendida, usando valores por defecto');
   }
 
-  // Extracción del Monto Total adaptada a formato monetario mexicano
+  // 3. Extracción del Monto Total
   for (const line of lines) {
     const cleanLine = line.replace(/([0-9]),([0-9]{3})/g, '$1$2');
     const totalMatch = cleanLine.match(/(?:TOTAL\s*(?:M(?:XN|\.?N\.?)?)?|TOTAL\s*A\s*PAGAR|IMPORTE\s*TOTAL|TOTAL)\s*[:\$]?\s*([0-9\.\s]{4,})/i);
@@ -137,11 +164,14 @@ async function parseMexicanTicket(ocrText) {
     }
   }
 
-  const IGNORE_PATTERNS = /TIENDAS|OXXO|WALMART|BODEGA|OFFICE|PEMEX|SAMS|COSTCO|SORIANA|ARTELI|HOME|LIVERPOOL|S\.?A\.?|C\.?V\.?|R\.?F\.?C\.?|SUC|BLVD|AV\.|CANT|ARTICULO|PRECIC|SUBTOTAL|TOTAL|AFILIACION|TARJETA|CAMBIO|AUT#|PROSA|SALDO|REBAJADO|AHORRO|IVA|IEPS|ATENDIO|OPINION|REDONDEO|REGIMEN|AVISO|PAGO|EFECTIVO|MENSAJE|GRACIAS|TASA|IMPORTE/i;
+  const IGNORE_PATTERNS = /TIENDAS|OXXO|WALMART|BODEGA|OFFICE|PEMEX|SAMS|COSTCO|SORIANA|ARTELI|HOME|LIVERPOOL|S\.?A\.?|C\.?V\.?|R\.?F\.?C\.?|SUC|BLVD|AV\.|CANT|ARTICULO|PRECIC|SUBTOTAL|TOTAL|AFILIACION|TARJETA|CAMBIO|AUT#|PROSA|SALDO|REBAJADO|AHORRO|IVA|IEPS|ATENDIO|OPINION|REDONDEO|REGIMEN|AVISO|PAGO|EFECTIVO|MENSAJE|GRACIAS|TASA|IMPORTE|CLIENTE|CAJERO|CODIGO|DEVOLUCIONES|PREFERENCIA/i;
 
   let inItemsSection = true;
 
-  for (const line of lines) {
+  // 4. Extracción robusta de ítems
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
     if (/SUBTOTAL|TOTAL\s*[\$M]|EFECTIVO|TARJ\.?|CAMBIO|IVA\s+\d|IEPS|FORMA\s*DE\s*PAGO/i.test(line)) {
       inItemsSection = false;
     }
@@ -149,22 +179,44 @@ async function parseMexicanTicket(ocrText) {
 
     if (line.includes('-') || /%\s*-/.test(line) || /@/.test(line)) continue;
 
-    const cleanLine = line.replace(/^\d{8,}\s+/, '').replace(/\s+[A-Z]$/i, '').trim();
-    const priceMatch = cleanLine.match(/([0-9]+\.\d{2})$/);
+    const priceMatch = line.match(/([0-9]+\.\d{2})$/);
 
     if (priceMatch) {
       const price = parseFloat(priceMatch[1]);
-      let rawName = cleanLine
+      let candidateName = '';
+
+      let currentClean = line
         .replace(/([0-9]+\.\d{2})$/, '')
         .replace(/^\d+(\.\d+)?\s+/, '')
-        .replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s]/g, '')
+        .replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g, ' ')
+        .replace(/\s+/g, ' ')
         .trim();
 
-      if (rawName.length >= 3 && price > 0 && !IGNORE_PATTERNS.test(rawName)) {
-        items.push({
-          name: rawName.toUpperCase(),
-          price: price
-        });
+      const hasValidWord = /[a-zA-ZáéíóúÁÉÍÓÚñÑ]{3,}/.test(currentClean);
+
+      if (hasValidWord && currentClean.length >= 3 && !IGNORE_PATTERNS.test(currentClean)) {
+        candidateName = currentClean;
+      } else if (i > 0) {
+        let prevLine = lines[i - 1];
+        let prevClean = prevLine
+          .replace(/^\d{8,}\s+/, '')
+          .replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        if (prevClean.length >= 3 && !IGNORE_PATTERNS.test(prevClean)) {
+          candidateName = prevClean;
+        }
+      }
+
+      if (candidateName && price > 0) {
+        const upperName = candidateName.toUpperCase();
+        if (!items.some(item => item.name === upperName && item.price === price)) {
+          items.push({
+            name: upperName,
+            price: price
+          });
+        }
       }
     }
   }
@@ -175,17 +227,11 @@ async function parseMexicanTicket(ocrText) {
 
   return {
     concept: concept.toUpperCase(),
-    amount: Number(totalAmount.toFixed(2)) || 368.80,
+    amount: Number(totalAmount.toFixed(2)) || 0,
     category: category,
     description: `Ticket escaneado de ${concept}`,
-    items: items.length > 0 ? items : [
-      { name: 'CURITAS RESISTENTE', price: 96.00 },
-      { name: 'JAMON VIRG ZWAN 250', price: 48.00 },
-      { name: 'QUESO LYNCOTT CREM', price: 40.00 },
-      { name: 'QUESO NOCHEBUENA M', price: 75.00 },
-      { name: 'QUESO LALA GRIENSA', price: 88.00 },
-      { name: 'CIABATTA MEDIANO', price: 17.00 }
-    ],
+    items: items,
+    date: ticketDate || new Date().toISOString().split('T')[0],
     engine: learnedTemplate ? 'LOCAL_TESSERACT_MEXICO_LEARNED' : 'LOCAL_TESSERACT_MEXICO'
   };
 }
@@ -204,6 +250,7 @@ export async function parseNaturalLanguageExpense(textInput) {
     amount: amountNum,
     category: 'OTROS',
     description: textInput,
+    date: new Date().toISOString().split('T')[0],
     items: []
   };
 }

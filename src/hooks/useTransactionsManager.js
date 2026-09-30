@@ -169,6 +169,9 @@ export function useTransactionsManager(activeUser, auditorMode, isMasterAuditor,
         : new Date().toISOString().split('T')[0];
 
       const isRetroactiveVal = typeof data === 'object' ? Boolean(data.is_retroactive) : false;
+      const isTicketVal = typeof data === 'object' ? Boolean(data.is_ticket) : false;
+      const itemsVal = typeof data === 'object' ? (data.items || []) : [];
+      const userIdVal = typeof data === 'object' ? data.user_id : null;
 
       const inserted = await saveTransaction({
         transactionType: type,
@@ -178,7 +181,10 @@ export function useTransactionsManager(activeUser, auditorMode, isMasterAuditor,
         userName: activeUser,
         date: dateVal,
         transaction_date: dateVal,
-        is_retroactive: isRetroactiveVal
+        is_retroactive: isRetroactiveVal,
+        is_ticket: isTicketVal,
+        items: itemsVal,
+        user_id: userIdVal
       });
 
       // El realtime actualizará automáticamente, pero mantenemos la llamada por agilidad local
@@ -209,7 +215,9 @@ export function useTransactionsManager(activeUser, auditorMode, isMasterAuditor,
         concept: aMayusculas(updatedData.concept),
         transaction_type: updatedData.transaction_type,
         transaction_date: updatedData.date || updatedData.transaction_date,
-        is_retroactive: Boolean(updatedData.is_retroactive)
+        is_retroactive: Boolean(updatedData.is_retroactive),
+        is_ticket: Boolean(updatedData.is_ticket),
+        items: updatedData.items || []
       } : { amount: aNumero(updatedData) };
 
       await updateTransactionAmount(id, payload);

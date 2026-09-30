@@ -1,3 +1,5 @@
+// src/components/Expenses/DashboardScreen.jsx
+
 import React, { useState, useEffect, useMemo } from 'react';
 
 // Cliente Supabase
@@ -16,6 +18,7 @@ import { useQuickActionsManager } from '../../../hooks/useQuickActionsManager.js
 
 // Servicios de IA y Radar de Precios
 import { analyzeAndUpdatePrices } from '../../../services/priceRadarService';
+
 // Componentes externos
 import DashboardHeader from '../../Expenses/DashboardHeader';
 import AddCustomButtonModal from '../../Expenses/AddCustomButtonModal';
@@ -89,34 +92,22 @@ export default function DashboardScreen() {
   }, [selectedAuditedUser]);
 
   const targetUserForTx = useMemo(() => {
-    if (!auditorMode) {
-      return null;
-    }
-    if (!selectedAuditedUser) {
-      return null;
-    }
+    if (!auditorMode) return null;
+    if (!selectedAuditedUser) return null;
 
     const foundUser = usersList.find(
       (u) => u.id === selectedAuditedUser || 
             (u.nombre && selectedAuditedUser && u.nombre.trim().toUpperCase() === String(selectedAuditedUser).trim().toUpperCase())
     );
 
-    if (foundUser) {
-      return foundUser;
-    }
-
-    return selectedAuditedUser;
+    return foundUser || selectedAuditedUser;
   }, [auditorMode, selectedAuditedUser, usersList]);
 
   const playerManager = usePlayerManagement(targetUserForTx, auditorMode);
 
   const targetUserIdForMetas = useMemo(() => {
-    if (!auditorMode) {
-      return currentUser?.id || '';
-    }
-    if (!selectedAuditedUser) {
-      return '';
-    }
+    if (!auditorMode) return currentUser?.id || '';
+    if (!selectedAuditedUser) return '';
     if (typeof selectedAuditedUser === 'object' && selectedAuditedUser !== null) {
       return selectedAuditedUser.id || '';
     }
@@ -129,27 +120,19 @@ export default function DashboardScreen() {
 
   const resolvedDisplayName = useMemo(() => {
     if (auditorMode) {
-      if (!selectedAuditedUser) {
-        return 'SELECCIONA USUARIO';
-      }
+      if (!selectedAuditedUser) return 'SELECCIONA USUARIO';
       const found = usersList.find(
         (u) => u.id === selectedAuditedUser || 
               (u.nombre && selectedAuditedUser && u.nombre.trim().toUpperCase() === String(selectedAuditedUser).trim().toUpperCase())
       );
-      if (found) {
-        return `${found.nombre || ''} ${found.apellido_paterno || ''}`.trim();
-      }
-      if (typeof selectedAuditedUser === 'string') {
-        return selectedAuditedUser;
-      }
+      if (found) return `${found.nombre || ''} ${found.apellido_paterno || ''}`.trim();
+      if (typeof selectedAuditedUser === 'string') return selectedAuditedUser;
     }
     return playerManager.activeUser || currentUser?.email?.split('@')[0] || 'USUARIO';
   }, [auditorMode, selectedAuditedUser, usersList, playerManager.activeUser, currentUser]);
 
   const effectiveUserForHooks = useMemo(() => {
-    if (!auditorMode) {
-      return playerManager.activeUser || currentUser?.email;
-    }
+    if (!auditorMode) return playerManager.activeUser || currentUser?.email;
     return targetUserForTx;
   }, [auditorMode, targetUserForTx, playerManager.activeUser, currentUser]);
 
@@ -231,7 +214,6 @@ export default function DashboardScreen() {
     window.location.href = window.location.origin;
   };
 
-  // 🤖 Actualizado para recibir detectedItems y alimentar el Radar de Precios
   const handleCustomButtonSubmit = async (e, detectedItems = []) => {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
     
@@ -248,7 +230,6 @@ export default function DashboardScreen() {
       quickActionsManager.handleAddAction(payload, payload.type);
     }
 
-    // 🌟 Si la IA detectó ítems por dictado o texto, actualizamos el historial de precios en Supabase
     if (detectedItems && detectedItems.length > 0) {
       try {
         await analyzeAndUpdatePrices(detectedItems, conceptName);
@@ -278,6 +259,39 @@ export default function DashboardScreen() {
     txManager.handleSaveTransaction(processedData, type);
   };
 
+  // 🚀 MANEJADOR PROFESIONAL DE TICKETS OCR CENTRALIZADO A TRAVÉS DE txManager
+  const handleScanSuccessOCR = async (payload) => {
+    setIsOcrOpen(false);
+    try {
+      const transactionData = {
+        concept: payload.concept || 'TICKET',
+        amount: Number(payload.amount) || 0,
+        category: payload.category || 'VARIOS',
+        transaction_type: payload.transaction_type || payload.type || 'expense',
+        transaction_date: payload.date || payload.transaction_date || new Date().toISOString().split('T')[0],
+        is_ticket: true,
+        items: payload.items || [],
+        user_id: currentUser?.id || null
+      };
+
+      // Delegamos la persistencia al gestor centralizado de transacciones
+      await txManager.handleSaveTransaction(transactionData, transactionData.transaction_type);
+
+      if (payload.items && payload.items.length > 0) {
+        try {
+          await analyzeAndUpdatePrices(payload.items, transactionData.concept);
+        } catch (priceErr) {
+          console.error('Error al actualizar el radar de precios con los ítems del ticket:', priceErr);
+        }
+      }
+
+      alert(`¡Ticket guardado correctamente!\nComercio: ${transactionData.concept}\nMonto: ${formatearMoneda(transactionData.amount)}`);
+    } catch (err) {
+      console.error('Error profesional al procesar y guardar el ticket:', err);
+      alert(`Error al registrar el ticket: ${err.message || 'Error desconocido'}`);
+    }
+  };
+
   return (
     <div className={`min-h-screen bg-[#Fef8e7] p-4 md:p-8 font-mono text-black pb-28 select-none relative ${isOffline ? 'pt-10' : ''}`}>
       
@@ -303,7 +317,6 @@ export default function DashboardScreen() {
       ) : (
         <div className="max-w-4xl mx-auto space-y-8">
           
-          {/* BARRA SUPERIOR */}
           <div className="flex justify-between items-center mb-2">
             {isMasterAuditor ? (
               <div className={`flex items-center gap-3 px-4 py-2 rounded-xl border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-colors duration-300 ${auditorMode ? 'bg-red-500' : 'bg-stone-900'}`}>
@@ -463,24 +476,10 @@ export default function DashboardScreen() {
         />
       )}
 
+      {/* Escáner OCR integrado profesionalmente mediante el hook central */}
       {isOcrOpen && (
         <OCRScanner 
-          onScanSuccess={async (res) => {
-            setIsOcrOpen(false);
-            try {
-              const expensePayload = {
-                concept: res.concept || 'COMPRA CON TICKET',
-                amount: res.amount || 0,
-                category: res.category || 'MERCADO',
-                date: retroactiveDate,
-                is_retroactive: Boolean(retroactiveDate)
-              };
-              await txManager.handleSaveTransaction(expensePayload, 'expense');
-              alert(`¡Ticket guardado!\nComercio: ${expensePayload.concept}\nMonto: ${formatearMoneda(expensePayload.amount)}`);
-            } catch (err) {
-              alert('Error al registrar gasto del ticket.');
-            }
-          }} 
+          onScanSuccess={handleScanSuccessOCR} 
           onClose={() => setIsOcrOpen(false)} 
         />
       )}
