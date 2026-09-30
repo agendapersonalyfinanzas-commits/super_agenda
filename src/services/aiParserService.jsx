@@ -19,15 +19,59 @@ async function initWorker(onProgress) {
 }
 
 /**
+ * 🚀 Comprime y redimensiona imágenes gigantes de cámaras móviles para evitar
+ * saturación de memoria (OOM) o timeouts en Tesseract.
+ */
+async function resizeImageIfNeeded(fileOrBlob, maxWidth = 1200, quality = 0.8) {
+  return new Promise((resolve) => {
+    if (!(fileOrBlob instanceof File || fileOrBlob instanceof Blob)) {
+      resolve(fileOrBlob);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(
+          (blob) => {
+            resolve(blob || fileOrBlob);
+          },
+          'image/jpeg',
+          quality
+        );
+      };
+      img.onerror = () => resolve(fileOrBlob);
+      img.src = e.target.result;
+    };
+    reader.onerror = () => resolve(fileOrBlob);
+    reader.readAsDataURL(fileOrBlob);
+  });
+}
+
+/**
  * Función principal para procesar imágenes de tickets en México
  */
 export async function parseExpenseInput(inputData, onProgress) {
   try {
     if (inputData instanceof File || inputData instanceof Blob) {
+      // 🎯 Optimización móvil: comprimir antes de procesar OCR
+      const optimizedImage = await resizeImageIfNeeded(inputData);
+
       const worker = await initWorker(onProgress);
       if (!worker) throw new Error('No se pudo inicializar el motor OCR.');
 
-      const imageUrl = URL.createObjectURL(inputData);
+      const imageUrl = URL.createObjectURL(optimizedImage);
       const { data: { text } } = await worker.recognize(imageUrl);
       URL.revokeObjectURL(imageUrl);
 
@@ -59,7 +103,7 @@ export async function parseExpenseInput(inputData, onProgress) {
  */
 async function parseMexicanTicket(ocrText) {
   const lines = ocrText
-    .split('\n')
+    .split(/\r?\n/)
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
 
@@ -100,7 +144,7 @@ async function parseMexicanTicket(ocrText) {
     if (concept !== 'COMPRA GENERAL') break;
   }
 
-  // 2. Extracción ultra robusta de la Fecha del Ticket (Tolera espacios de Tesseract ej: 28 / SEP. / 2026)
+  // 2. Extracción ultra robusta de la Fecha del Ticket
   let ticketDate = null;
   const MONTH_MAP = {
     'ENE': '01', 'FEB': '02', 'MAR': '03', 'ABR': '04', 'MAY': '05', 'JUN': '06',
@@ -109,7 +153,6 @@ async function parseMexicanTicket(ocrText) {
   };
 
   for (const line of lines) {
-    // 🧠 Regex con \s* antes y después de separadores para ignorar espacios de OCR
     const dateMatch = line.match(/(\d{1,2})\s*[\/\-\.]\s*([A-Z]{3,4}\.?|\d{1,2})\s*[\/\-\.]?\s*(\d{2,4})/i);
     if (dateMatch) {
       let day = dateMatch[1].padStart(2, '0');
@@ -133,7 +176,7 @@ async function parseMexicanTicket(ocrText) {
       category = learnedTemplate.category;
     }
   } catch (e) {
-    console.warn('No se pudo cargar plantilla aprendida, usando valores por defecto');
+    console.warn('No se pudo cargar plantilla aprendida');
   }
 
   // 3. Extracción del Monto Total
