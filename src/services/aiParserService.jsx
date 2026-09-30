@@ -108,7 +108,6 @@ async function parseMexicanTicket(ocrText) {
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
 
-  let concept = 'CHEDRAUI';
   let totalAmount = 0;
   let category = 'SUPERMERCADO';
   const items = [];
@@ -137,16 +136,15 @@ async function parseMexicanTicket(ocrText) {
     }
   }
 
-  // 2. Extracción ultra estricta del Monto Total (Evita caer en SUBTOTAL)
+  // 2. Extracción ultra estricta del Monto Total (Evita SUBTOTAL)
   for (const line of lines) {
-    // Busca líneas que contengan TOTAL pero que NO contengan SUBTOTAL
     if (/TOTAL/i.test(line) && !/SUBTOTAL/i.test(line)) {
       const matches = line.match(/([0-9,]+\.\d{2})/g);
       if (matches && matches.length > 0) {
         const val = parseFloat(matches[matches.length - 1].replace(',', ''));
         if (val > 0) {
           totalAmount = val;
-          break; // Encontramos el total real, detenemos la búsqueda
+          break;
         }
       }
     }
@@ -156,45 +154,46 @@ async function parseMexicanTicket(ocrText) {
 
   let inItemsSection = true;
 
-  // 3. Extracción blindada de Ítems (Chedraui)
+  // 3. Extracción Definitiva de Ítems adaptada al formato Chedraui
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
-    // Detener lectura de ítems al llegar a totales o pagos
     if (/SUBTOTAL|TOTAL\s*[\$M]|EFECTIVO|TARJ\.?|CAMBIO|IVA\s+\d|IEPS|FORMA\s*DE\s*PAGO|DEBITO/i.test(line)) {
       inItemsSection = false;
     }
     if (!inItemsSection) continue;
 
-    // Ignorar líneas de descuento (que terminan en '-' o tienen 'dsc') y códigos de barras solos
+    // Ignorar descuentos y códigos de barras
     if (line.endsWith('-') || /dsc|descuento|ahorro/i.test(line) || /^\d{8,14}$/.test(line)) {
       continue;
     }
 
-    const priceMatches = line.match(/([0-9,]+\.\d{2})/g);
+    // Buscar si la línea empieza con una cantidad típica de ticket (ej: 1.000, 4.000) seguida de texto y precios
+    const lineMatch = line.match(/^\s*(\d+[.,]\d+)\s+(.+)$/);
+    if (lineMatch) {
+      let remainder = lineMatch[2];
+      const priceMatches = remainder.match(/([0-9,]+\.\d{2})/g);
 
-    if (priceMatches && priceMatches.length > 0) {
-      // El último precio de la línea es el importe total real del producto
-      const lineTotal = parseFloat(priceMatches[priceMatches.length - 1].replace(',', ''));
+      if (priceMatches && priceMatches.length > 0) {
+        // El último precio es el total de la línea
+        const lineTotal = parseFloat(priceMatches[priceMatches.length - 1].replace(',', ''));
 
-      let cleanedName = line;
-      for (const p of priceMatches) {
-        cleanedName = cleanedName.replace(p, '');
-      }
-      // Limpiar cantidad inicial (ej: 1.000 o 4.000)
-      cleanedName = cleanedName.replace(/^\s*\d+[.,]\d+\s+/, '');
-      // Limpiar letras indicadoras de columna (ej: A, B, K)
-      cleanedName = cleanedName.replace(/\s+[A-Z]\s*$/, '');
-      // Limpiar símbolos raros
-      cleanedName = cleanedName.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+        // Limpiar el nombre removiendo los precios y letras de columna finales (A, B, K)
+        let cleanedName = remainder;
+        for (const p of priceMatches) {
+          cleanedName = cleanedName.replace(p, '');
+        }
+        cleanedName = cleanedName.replace(/\s+[A-Z]\s*$/, '');
+        cleanedName = cleanedName.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
 
-      if (cleanedName.length >= 3 && !IGNORE_PATTERNS.test(cleanedName) && lineTotal > 0) {
-        const upperName = cleanedName.toUpperCase();
-        if (!items.some(item => item.name === upperName)) {
-          items.push({
-            name: upperName,
-            price: lineTotal
-          });
+        if (cleanedName.length >= 3 && !IGNORE_PATTERNS.test(cleanedName) && lineTotal > 0) {
+          const upperName = cleanedName.toUpperCase();
+          if (!items.some(item => item.name === upperName)) {
+            items.push({
+              name: upperName,
+              price: lineTotal
+            });
+          }
         }
       }
     }
@@ -208,11 +207,11 @@ async function parseMexicanTicket(ocrText) {
   return {
     concept: 'CHEDRAUI',
     amount: Number(totalAmount.toFixed(2)) || 0,
-    category: 'SUPERMERCADO',
+    category: category,
     description: 'Ticket escaneado de CHEDRAUI',
     items: items,
     date: ticketDate || new Date().toISOString().split('T')[0],
-    engine: 'MOBILE_CHEDRAUI_MASTER_TRAINED'
+    engine: 'MOBILE_CHEDRAUI_PERFECT_MATCH'
   };
 }
 
