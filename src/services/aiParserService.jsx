@@ -136,7 +136,7 @@ async function parseMexicanTicket(ocrText) {
     }
   }
 
-  // 2. Extracción ultra estricta del Monto Total (Evita SUBTOTAL)
+  // 2. Extracción ultra estricta del Monto Total
   for (const line of lines) {
     if (/TOTAL/i.test(line) && !/SUBTOTAL/i.test(line)) {
       const matches = line.match(/([0-9,]+\.\d{2})/g);
@@ -154,7 +154,7 @@ async function parseMexicanTicket(ocrText) {
 
   let inItemsSection = true;
 
-  // 3. Extracción Definitiva de Ítems adaptada al formato Chedraui
+  // 3. Extracción Definitiva de Ítems (A prueba de errores OCR en Chedraui)
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
@@ -163,43 +163,42 @@ async function parseMexicanTicket(ocrText) {
     }
     if (!inItemsSection) continue;
 
-    // Ignorar descuentos y códigos de barras
+    // Ignorar líneas de descuento y códigos de barras
     if (line.endsWith('-') || /dsc|descuento|ahorro/i.test(line) || /^\d{8,14}$/.test(line)) {
       continue;
     }
 
-    // Buscar si la línea empieza con una cantidad típica de ticket (ej: 1.000, 4.000) seguida de texto y precios
-    const lineMatch = line.match(/^\s*(\d+[.,]\d+)\s+(.+)$/);
-    if (lineMatch) {
-      let remainder = lineMatch[2];
-      const priceMatches = remainder.match(/([0-9,]+\.\d{2})/g);
+    // Buscamos todos los bloques numéricos con formato de precio (ej: 96.00, 48.00, etc.)
+    const numbersInLine = line.match(/([0-9]{1,3}(?:[,][0-9]{3})*[.,]\d{2})/g);
 
-      if (priceMatches && priceMatches.length > 0) {
-        // El último precio es el total de la línea
-        const lineTotal = parseFloat(priceMatches[priceMatches.length - 1].replace(',', ''));
+    if (numbersInLine && numbersInLine.length > 0) {
+      // El último número encontrado en la línea es SIEMPRE el total de ese producto
+      const lineTotal = parseFloat(numbersInLine[numbersInLine.length - 1].replace(',', ''));
 
-        // Limpiar el nombre removiendo los precios y letras de columna finales (A, B, K)
-        let cleanedName = remainder;
-        for (const p of priceMatches) {
-          cleanedName = cleanedName.replace(p, '');
-        }
-        cleanedName = cleanedName.replace(/\s+[A-Z]\s*$/, '');
-        cleanedName = cleanedName.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+      // Limpiamos el nombre quitando todos los números de precios y cantidades detectados
+      let cleanedName = line;
+      for (const num of numbersInLine) {
+        cleanedName = cleanedName.replace(num, '');
+      }
+      // Quitar cantidad inicial tipo 1.000 o 4.000 si quedó suelta
+      cleanedName = cleanedName.replace(/^\s*\d+[.,]\d+\s*/, '');
+      // Quitar letras de columna finales (A, B, K)
+      cleanedName = cleanedName.replace(/\s+[A-Z]\s*$/, '');
+      // Limpiar caracteres especiales
+      cleanedName = cleanedName.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
 
-        if (cleanedName.length >= 3 && !IGNORE_PATTERNS.test(cleanedName) && lineTotal > 0) {
-          const upperName = cleanedName.toUpperCase();
-          if (!items.some(item => item.name === upperName)) {
-            items.push({
-              name: upperName,
-              price: lineTotal
-            });
-          }
+      if (cleanedName.length >= 3 && !IGNORE_PATTERNS.test(cleanedName) && lineTotal > 0 && lineTotal < 1000) {
+        const upperName = cleanedName.toUpperCase();
+        if (!items.some(item => item.name === upperName)) {
+          items.push({
+            name: upperName,
+            price: lineTotal
+          });
         }
       }
     }
   }
 
-  // Fallback si el total no se leyó pero hay ítems
   if (totalAmount === 0 && items.length > 0) {
     totalAmount = items.reduce((sum, item) => sum + item.price, 0);
   }
@@ -211,7 +210,7 @@ async function parseMexicanTicket(ocrText) {
     description: 'Ticket escaneado de CHEDRAUI',
     items: items,
     date: ticketDate || new Date().toISOString().split('T')[0],
-    engine: 'MOBILE_CHEDRAUI_PERFECT_MATCH'
+    engine: 'MOBILE_CHEDRAUI_ULTIMATE_FIX'
   };
 }
 
