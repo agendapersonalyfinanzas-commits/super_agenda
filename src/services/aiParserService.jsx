@@ -103,10 +103,7 @@ export async function parseExpenseInput(inputData, onProgress) {
 }
 
 async function parseMexicanTicket(ocrText) {
-  // Normalizar texto para corregir puntos térmicos leídos como espacios (ej: "32 00" -> "32.00")
-  const normalizedText = ocrText.replace(/(\d{2,3})\s+(\d{2})\b/g, '$1.$2');
-
-  const lines = normalizedText
+  const lines = ocrText
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
@@ -139,7 +136,7 @@ async function parseMexicanTicket(ocrText) {
     }
   }
 
-  // 2. Extracción ultra estricta del Monto Total
+  // 2. Extracción ultra estricta del Monto Total (Evita SUBTOTAL)
   for (const line of lines) {
     if (/TOTAL/i.test(line) && !/SUBTOTAL/i.test(line)) {
       const matches = line.match(/([0-9,]+\.\d{2})/g);
@@ -153,13 +150,13 @@ async function parseMexicanTicket(ocrText) {
     }
   }
 
-  const IGNORE_PATTERNS = /TIENDAS|OXXO|WALMART|BODEGA|OFFICE|PEMEX|SAMS|COSTCO|SORIANA|ARTELI|HOME|LIVERPOOL|S\.?A\.?|C\.?V\.?|R\.?F\.?C\.?|SUC|BLVD|AV\.|CANT|ARTICULO|PRECIC|SUBTOTAL|TOTAL|AFILIACION|TARJETA|CAMBIO|AUT#|PROSA|SALDO|REBAJADO|AHORRO|IVA|IEPS|ATENDIO|OPINION|REDONDEO|REGIMEN|AVISO|PAGO|EFECTIVO|MENSAJE|GRACIAS|TASA|IMPORTE|CLIENTE|CAJERO|CODIGO|DEVOLUCIONES|PREFERENCIA|DEBITO|ARQC|AID|DEPARTAMENTO/i;
+  const IGNORE_PATTERNS = /TIENDAS|OXXO|WALMART|BODEGA|OFFICE|PEMEX|SAMS|COSTCO|SORIANA|ARTELI|HOME|LIVERPOOL|S\.?A\.?|C\.?V\.?|R\.?F\.?C\.?|SUC|BLVD|AV\.|CANT|ARTICULO|PRECIC|SUBTOTAL|TOTAL|AFILIACION|TARJETA|CAMBIO|AUT#|PROSA|SALDO|REBAJADO|AHORRO|IVA|IEPS|ATENDIO|OPINION|REDONDEO|REGIMEN|AVISO|PAGO|EFECTIVO|MENSAJE|GRACIAS|TASA|IMPORTE|CLIENTE|CAJERO|CODIGO|DEVOLUCIONES|PREFERENCIA|DEBITO|ARQC|AID|DEPARTAMENTO|FARMACIA|SALCHICHONERIA|LACTEOS|PANIFICADORA|ALIMENTOS|REFIGERADOS|EMPACADA/i;
 
   let inItemsSection = true;
 
-  // 3. Extracción de Ítems Robusta y Tolerante a Descuentos
+  // 3. Extracción Definitiva de Ítems
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+    let line = lines[i];
 
     if (/SUBTOTAL|TOTAL\s*[\$M]|EFECTIVO|TARJ\.?|CAMBIO|IVA\s+\d|IEPS|FORMA\s*DE\s*PAGO|DEBITO/i.test(line)) {
       inItemsSection = false;
@@ -171,11 +168,14 @@ async function parseMexicanTicket(ocrText) {
       continue;
     }
 
-    // Detectar líneas que parezcan productos (que contengan precios con decimales)
+    // Normalizar de forma segura posibles espacios en precios térmicos (ej. "48 00" -> "48.00")
+    line = line.replace(/(\d{2,3})\s+(\d{2})\b/g, '$1.$2');
+
+    // Buscar todos los precios o montos en la línea
     const priceMatches = line.match(/([0-9,]+\.\d{2})/g);
 
     if (priceMatches && priceMatches.length > 0) {
-      // El último precio de la línea es el importe total real pagado por ese producto
+      // El último precio encontrado en la línea es el importe total real de ese producto
       const lineTotal = parseFloat(priceMatches[priceMatches.length - 1].replace(',', ''));
 
       let cleanedName = line;
@@ -184,9 +184,9 @@ async function parseMexicanTicket(ocrText) {
       }
       // Limpiar cantidad inicial (ej: 1.000 o 4.000)
       cleanedName = cleanedName.replace(/^\s*\d+[.,]\d+\s*/, '');
-      // Limpiar letras de columna (A, B, K)
+      // Limpiar letras de columna final (A, B, K)
       cleanedName = cleanedName.replace(/\s+[A-Z]\s*$/, '');
-      // Limpiar caracteres especiales
+      // Limpiar símbolos raros
       cleanedName = cleanedName.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
 
       if (cleanedName.length >= 3 && !IGNORE_PATTERNS.test(cleanedName) && lineTotal > 0 && lineTotal < 1500) {
@@ -212,7 +212,7 @@ async function parseMexicanTicket(ocrText) {
     description: 'Ticket escaneado de CHEDRAUI',
     items: items,
     date: ticketDate || new Date().toISOString().split('T')[0],
-    engine: 'MOBILE_CHEDRAUI_MASTER_PRO'
+    engine: 'MOBILE_CHEDRAUI_ULTIMATE_PRO'
   };
 }
 
