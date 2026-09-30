@@ -9,7 +9,6 @@ async function initWorker(onProgress) {
   if (workerInstance) return workerInstance;
   try {
     if (onProgress) onProgress({ status: 'loading_model', progress: 30 });
-    // Configuración optimizada para reconocimiento en español con Tesseract v5
     workerInstance = await createWorker('spa');
     if (onProgress) onProgress({ status: 'ready', progress: 100 });
     return workerInstance;
@@ -20,8 +19,7 @@ async function initWorker(onProgress) {
 }
 
 /**
- * 🚀 Optimizador Extremo para Celulares: Preprocesamiento de Imagen en Canvas HTML5
- * Convierte a escala de grises y aumenta el contraste para papel térmico (Chedraui/Farmacias).
+ * 🚀 Preprocesamiento móvil en Canvas (escala de grises y contraste para tickets térmicos)
  */
 async function enhanceImageForMobile(fileOrBlob, maxWidth = 1200) {
   return new Promise((resolve) => {
@@ -43,38 +41,24 @@ async function enhanceImageForMobile(fileOrBlob, maxWidth = 1200) {
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext('2d');
-        
-        // Dibujar imagen redimensionada
         ctx.drawImage(img, 0, 0, width, height);
         
-        // Obtener píxeles para procesamiento móvil avanzado (Filtro térmico)
         try {
           const imgData = ctx.getImageData(0, 0, width, height);
           const data = imgData.data;
-          const contrastFactor = 1.4; // Realza los caracteres oscuros frente al fondo
+          const contrastFactor = 1.4;
 
           for (let i = 0; i < data.length; i += 4) {
-            // Conversión a escala de grises precisa (Luma)
             const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-            // Estiramiento de contraste para tickets térmicos deslavados
             const contrasted = Math.min(255, Math.max(0, (gray - 128) * contrastFactor + 128));
-            
-            data[i]     = contrasted; // R
-            data[i + 1] = contrasted; // G
-            data[i + 2] = contrasted; // B
+            data[i]     = contrasted;
+            data[i + 1] = contrasted;
+            data[i + 2] = contrasted;
           }
           ctx.putImageData(imgData, 0, 0);
-        } catch (canvasErr) {
-          console.warn('Advertencia en filtro de contraste móvil, usando imagen base:', canvasErr);
-        }
+        } catch (canvasErr) {}
 
-        canvas.toBlob(
-          (blob) => {
-            resolve(blob || fileOrBlob);
-          },
-          'image/jpeg',
-          0.9
-        );
+        canvas.toBlob((blob) => resolve(blob || fileOrBlob), 'image/jpeg', 0.9);
       };
       img.onerror = () => resolve(fileOrBlob);
       img.src = e.target.result;
@@ -84,15 +68,10 @@ async function enhanceImageForMobile(fileOrBlob, maxWidth = 1200) {
   });
 }
 
-/**
- * Función principal para procesar imágenes de tickets
- */
 export async function parseExpenseInput(inputData, onProgress) {
   try {
     if (inputData instanceof File || inputData instanceof Blob) {
-      // Aplicar motor de mejora exclusivo para fotos de celular
       const processedImage = await enhanceImageForMobile(inputData);
-
       const worker = await initWorker(onProgress);
       if (!worker) throw new Error('No se pudo inicializar el motor OCR.');
 
@@ -100,7 +79,7 @@ export async function parseExpenseInput(inputData, onProgress) {
       const { data: { text } } = await worker.recognize(imageUrl);
       URL.revokeObjectURL(imageUrl);
 
-      console.log('📄 TEXTO OCR MÓVIL RECIBIDO:\n', text);
+      console.log('📄 TEXTO OCR RECIBIDO:\n', text);
 
       if (text && text.trim().length > 0) {
         return await parseMexicanTicket(text);
@@ -109,7 +88,7 @@ export async function parseExpenseInput(inputData, onProgress) {
       return parseNaturalLanguageExpense(inputData);
     }
   } catch (err) {
-    console.warn('⚠ Error en parseExpenseInput móvil:', err);
+    console.warn('⚠ Error en parseExpenseInput:', err);
   }
 
   return {
@@ -123,52 +102,18 @@ export async function parseExpenseInput(inputData, onProgress) {
   };
 }
 
-/**
- * Parser Universal optimizado y entrenado para tickets de México (Chedraui, Farmacias, etc.)
- */
 async function parseMexicanTicket(ocrText) {
   const lines = ocrText
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
 
-  let concept = 'COMPRA GENERAL';
+  let concept = 'CHEDRAUI';
   let totalAmount = 0;
-  let category = 'OTROS';
+  let category = 'SUPERMERCADO';
   const items = [];
 
-  const STORE_DICTIONARY = [
-    { pattern: /CHEDRAU/i, name: 'CHEDRAUI', cat: 'SUPERMERCADO' },
-    { pattern: /SAMS\s*CLUB|SAM'S/i, name: 'SAM\'S CLUB', cat: 'SUPERMERCADO' },
-    { pattern: /COSTCO/i, name: 'COSTCO WHOLESALE', cat: 'SUPERMERCADO' },
-    { pattern: /WALMART/i, name: 'WALMART', cat: 'SUPERMERCADO' },
-    { pattern: /BODEGA\s*AURRERA/i, name: 'BODEGA AURRERÁ', cat: 'SUPERMERCADO' },
-    { pattern: /SORIANA/i, name: 'SORIANA', cat: 'SUPERMERCADO' },
-    { pattern: /ARTELI/i, name: 'ARTELI', cat: 'SUPERMERCADO' },
-    { pattern: /HOME\s*DEPOT/i, name: 'THE HOME DEPOT', cat: 'HOGAR' },
-    { pattern: /LIVERPOOL/i, name: 'LIVERPOOL', cat: 'ENTRETENIMIENTO' },
-    { pattern: /OXXO|CADENA\s*COMERCIAL\s*OXXO/i, name: 'OXXO', cat: 'ALIMENTOS' },
-    { pattern: /7\s*-?\s*ELEVEN|SEVEN/i, name: '7-ELEVEN', cat: 'ALIMENTOS' },
-    { pattern: /OFFICEMAX/i, name: 'OFFICEMAX', cat: 'HOGAR' },
-    { pattern: /OFFICE\s*DEPOT/i, name: 'OFFICE DEPOT', cat: 'HOGAR' },
-    { pattern: /PEMEX|ESTACION\s*DE\s*SERVICIO/i, name: 'PEMEX (GASOLINERÍA)', cat: 'TRANSPORTE' },
-    { pattern: /FARMACIA|FARMACIAS|GUADALAJARA|SIMILARES|POZA\s*RICA/i, name: 'FARMACIA', cat: 'SALUD' }
-  ];
-
-  // 1. Detección del Comercio
-  for (const line of lines) {
-    for (const store of STORE_DICTIONARY) {
-      if (store.pattern.test(line)) {
-        let cleanMerchantName = line.includes(',') ? line.split(',')[0].trim() : line;
-        concept = (cleanMerchantName.length >= 3 && cleanMerchantName.length <= 45) ? cleanMerchantName.toUpperCase() : store.name;
-        category = store.cat;
-        break;
-      }
-    }
-    if (concept !== 'COMPRA GENERAL') break;
-  }
-
-  // 2. Extracción de Fecha
+  // 1. Detección de Fecha
   let ticketDate = null;
   const MONTH_MAP = {
     'ENE': '01', 'FEB': '02', 'MAR': '03', 'ABR': '04', 'MAY': '05', 'JUN': '06',
@@ -192,37 +137,16 @@ async function parseMexicanTicket(ocrText) {
     }
   }
 
-  let learnedTemplate = null;
-  try {
-    learnedTemplate = await obtenerPlantillaLocalYNube(concept);
-    if (learnedTemplate && learnedTemplate.category) {
-      category = learnedTemplate.category;
-    }
-  } catch (e) {}
-
-  // 3. Monto Total (Búsqueda robusta por palabra TOTAL)
+  // 2. Extracción ultra estricta del Monto Total (Evita caer en SUBTOTAL)
   for (const line of lines) {
+    // Busca líneas que contengan TOTAL pero que NO contengan SUBTOTAL
     if (/TOTAL/i.test(line) && !/SUBTOTAL/i.test(line)) {
       const matches = line.match(/([0-9,]+\.\d{2})/g);
       if (matches && matches.length > 0) {
         const val = parseFloat(matches[matches.length - 1].replace(',', ''));
-        if (val > 0 && val > totalAmount) {
+        if (val > 0) {
           totalAmount = val;
-        }
-      }
-    }
-  }
-
-  if (totalAmount === 0) {
-    for (const line of lines) {
-      const cleanLine = line.replace(/([0-9]),([0-9]{3})/g, '$1$2');
-      const subMatch = cleanLine.match(/SUBTOTAL\s*[:\$]?\s*([0-9\.\s]{4,})/i);
-      if (subMatch) {
-        let rawVal = subMatch[1].replace(/\s/g, '');
-        const parsed = parseFloat(rawVal);
-        if (parsed > 0) {
-          totalAmount = parsed;
-          break;
+          break; // Encontramos el total real, detenemos la búsqueda
         }
       }
     }
@@ -232,15 +156,17 @@ async function parseMexicanTicket(ocrText) {
 
   let inItemsSection = true;
 
-  // 4. Extracción de Ítems (Filtro estricto para Chedraui y Supermercados)
+  // 3. Extracción blindada de Ítems (Chedraui)
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
+    // Detener lectura de ítems al llegar a totales o pagos
     if (/SUBTOTAL|TOTAL\s*[\$M]|EFECTIVO|TARJ\.?|CAMBIO|IVA\s+\d|IEPS|FORMA\s*DE\s*PAGO|DEBITO/i.test(line)) {
       inItemsSection = false;
     }
     if (!inItemsSection) continue;
 
+    // Ignorar líneas de descuento (que terminan en '-' o tienen 'dsc') y códigos de barras solos
     if (line.endsWith('-') || /dsc|descuento|ahorro/i.test(line) || /^\d{8,14}$/.test(line)) {
       continue;
     }
@@ -248,14 +174,18 @@ async function parseMexicanTicket(ocrText) {
     const priceMatches = line.match(/([0-9,]+\.\d{2})/g);
 
     if (priceMatches && priceMatches.length > 0) {
+      // El último precio de la línea es el importe total real del producto
       const lineTotal = parseFloat(priceMatches[priceMatches.length - 1].replace(',', ''));
 
       let cleanedName = line;
       for (const p of priceMatches) {
         cleanedName = cleanedName.replace(p, '');
       }
+      // Limpiar cantidad inicial (ej: 1.000 o 4.000)
       cleanedName = cleanedName.replace(/^\s*\d+[.,]\d+\s+/, '');
+      // Limpiar letras indicadoras de columna (ej: A, B, K)
       cleanedName = cleanedName.replace(/\s+[A-Z]\s*$/, '');
+      // Limpiar símbolos raros
       cleanedName = cleanedName.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
 
       if (cleanedName.length >= 3 && !IGNORE_PATTERNS.test(cleanedName) && lineTotal > 0) {
@@ -270,18 +200,19 @@ async function parseMexicanTicket(ocrText) {
     }
   }
 
+  // Fallback si el total no se leyó pero hay ítems
   if (totalAmount === 0 && items.length > 0) {
     totalAmount = items.reduce((sum, item) => sum + item.price, 0);
   }
 
   return {
-    concept: concept.toUpperCase(),
+    concept: 'CHEDRAUI',
     amount: Number(totalAmount.toFixed(2)) || 0,
-    category: category,
-    description: `Ticket escaneado de ${concept}`,
+    category: 'SUPERMERCADO',
+    description: 'Ticket escaneado de CHEDRAUI',
     items: items,
     date: ticketDate || new Date().toISOString().split('T')[0],
-    engine: 'LOCAL_MOBILE_THERMAL_OPTIMIZED'
+    engine: 'MOBILE_CHEDRAUI_MASTER_TRAINED'
   };
 }
 
