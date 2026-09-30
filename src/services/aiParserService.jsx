@@ -19,7 +19,7 @@ async function initWorker(onProgress) {
 }
 
 /**
- * 🚀 Preprocesamiento móvil avanzado en Canvas (escala de grises y contraste para tickets térmicos)
+ * 🚀 Preprocesamiento móvil ultraligero en Canvas para tickets térmicos
  */
 async function enhanceImageForMobile(fileOrBlob, maxWidth = 1200) {
   return new Promise((resolve) => {
@@ -79,7 +79,7 @@ export async function parseExpenseInput(inputData, onProgress) {
       const { data: { text } } = await worker.recognize(imageUrl);
       URL.revokeObjectURL(imageUrl);
 
-      console.log('📄 TEXTO OCR RECIBIDO:\n', text);
+      console.log('📄 TEXTO OCR SEMÁNTICO RECIBIDO:\n', text);
 
       if (text && text.trim().length > 0) {
         return await parseMexicanTicket(text);
@@ -102,15 +102,50 @@ export async function parseExpenseInput(inputData, onProgress) {
   };
 }
 
+/**
+ * Parser con Motor Semántico Estable y Memoria Híbrida
+ */
 async function parseMexicanTicket(ocrText) {
   const lines = ocrText
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
 
+  let concept = 'CHEDRAUI';
   let totalAmount = 0;
   let category = 'SUPERMERCADO';
   const items = [];
+
+  const STORE_DICTIONARY = [
+    { pattern: /CHEDRAU/i, name: 'CHEDRAUI', cat: 'SUPERMERCADO' },
+    { pattern: /SAMS\s*CLUB|SAM'S/i, name: 'SAM\'S CLUB', cat: 'SUPERMERCADO' },
+    { pattern: /COSTCO/i, name: 'COSTCO WHOLESALE', cat: 'SUPERMERCADO' },
+    { pattern: /WALMART/i, name: 'WALMART', cat: 'SUPERMERCADO' },
+    { pattern: /BODEGA\s*AURRERA/i, name: 'BODEGA AURRERÁ', cat: 'SUPERMERCADO' },
+    { pattern: /SORIANA/i, name: 'SORIANA', cat: 'SUPERMERCADO' },
+    { pattern: /OXXO/i, name: 'OXXO', cat: 'ALIMENTOS' },
+    { pattern: /FARMACIA|GUADALAJARA|SIMILARES|POZA\s*RICA/i, name: 'FARMACIA', cat: 'SALUD' }
+  ];
+
+  for (const line of lines) {
+    for (const store of STORE_DICTIONARY) {
+      if (store.pattern.test(line)) {
+        concept = store.name;
+        category = store.cat;
+        break;
+      }
+    }
+    if (concept !== 'CHEDRAUI') break;
+  }
+
+  // 🧠 Memoria Híbrida
+  let learnedTemplate = null;
+  try {
+    learnedTemplate = await obtenerPlantillaLocalYNube(concept);
+    if (learnedTemplate && learnedTemplate.category) {
+      category = learnedTemplate.category;
+    }
+  } catch (e) {}
 
   // 1. Detección de Fecha
   let ticketDate = null;
@@ -136,7 +171,7 @@ async function parseMexicanTicket(ocrText) {
     }
   }
 
-  // 2. Extracción ultra estricta del Monto Total (Evita SUBTOTAL)
+  // 2. Extracción Semántica del Monto Total (Evita SUBTOTAL)
   for (const line of lines) {
     if (/TOTAL/i.test(line) && !/SUBTOTAL/i.test(line)) {
       const matches = line.match(/([0-9,]+\.\d{2})/g);
@@ -150,43 +185,34 @@ async function parseMexicanTicket(ocrText) {
     }
   }
 
-  const IGNORE_PATTERNS = /TIENDAS|OXXO|WALMART|BODEGA|OFFICE|PEMEX|SAMS|COSTCO|SORIANA|ARTELI|HOME|LIVERPOOL|S\.?A\.?|C\.?V\.?|R\.?F\.?C\.?|SUC|BLVD|AV\.|CANT|ARTICULO|PRECIC|SUBTOTAL|TOTAL|AFILIACION|TARJETA|CAMBIO|AUT#|PROSA|SALDO|REBAJADO|AHORRO|IVA|IEPS|ATENDIO|OPINION|REDONDEO|REGIMEN|AVISO|PAGO|EFECTIVO|MENSAJE|GRACIAS|TASA|IMPORTE|CLIENTE|CAJERO|CODIGO|DEVOLUCIONES|PREFERENCIA|DEBITO|ARQC|AID|DEPARTAMENTO|FARMACIA|SALCHICHONERIA|LACTEOS|PANIFICADORA|ALIMENTOS|REFIGERADOS|EMPACADA/i;
+  const IGNORE_PATTERNS = /TIENDAS|OXXO|WALMART|BODEGA|OFFICE|PEMEX|SAMS|COSTCO|SORIANA|ARTELI|HOME|LIVERPOOL|S\.?A\.?|C\.?V\.?|R\.?F\.?C\.?|SUC|BLVD|AV\.|CANT|ARTICULO|PRECIC|SUBTOTAL|TOTAL|AFILIACION|TARJETA|CAMBIO|AUT#|PROSA|SALDO|REBAJADO|AHORRO|IVA|IEPS|ATENDIO|OPINION|REDONDEO|REGIMEN|AVISO|PAGO|EFECTIVO|MENSAJE|GRACIAS|TASA|IMPORTE|CLIENTE|CAJERO|CODIGO|DEVOLUCIONES|PREFERENCIA|DEBITO|ARQC|AID|DSC|DESCUENTO|FARMACIA|SALCHICHONERIA|LACTEOS|PANIFICADORA|ALIMENTOS|REFIGERADOS|EMPACADA|DEPARTAMENTO/i;
 
   let inItemsSection = true;
 
-  // 3. Extracción Definitiva de Ítems
+  // 3. Extracción Semántica Segura de Ítems
   for (let i = 0; i < lines.length; i++) {
-    let line = lines[i];
+    const line = lines[i];
 
     if (/SUBTOTAL|TOTAL\s*[\$M]|EFECTIVO|TARJ\.?|CAMBIO|IVA\s+\d|IEPS|FORMA\s*DE\s*PAGO|DEBITO/i.test(line)) {
       inItemsSection = false;
     }
     if (!inItemsSection) continue;
 
-    // Omitir líneas de descuento explícitas o códigos de barras puros
     if (line.endsWith('-') || /dsc|descuento|ahorro|%/.test(line) || /^\d{8,14}$/.test(line)) {
       continue;
     }
 
-    // Normalizar de forma segura posibles espacios en precios térmicos (ej. "48 00" -> "48.00")
-    line = line.replace(/(\d{2,3})\s+(\d{2})\b/g, '$1.$2');
-
-    // Buscar todos los precios o montos en la línea
     const priceMatches = line.match(/([0-9,]+\.\d{2})/g);
 
     if (priceMatches && priceMatches.length > 0) {
-      // El último precio encontrado en la línea es el importe total real de ese producto
       const lineTotal = parseFloat(priceMatches[priceMatches.length - 1].replace(',', ''));
 
       let cleanedName = line;
       for (const p of priceMatches) {
         cleanedName = cleanedName.replace(p, '');
       }
-      // Limpiar cantidad inicial (ej: 1.000 o 4.000)
       cleanedName = cleanedName.replace(/^\s*\d+[.,]\d+\s*/, '');
-      // Limpiar letras de columna final (A, B, K)
       cleanedName = cleanedName.replace(/\s+[A-Z]\s*$/, '');
-      // Limpiar símbolos raros
       cleanedName = cleanedName.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
 
       if (cleanedName.length >= 3 && !IGNORE_PATTERNS.test(cleanedName) && lineTotal > 0 && lineTotal < 1500) {
@@ -201,18 +227,14 @@ async function parseMexicanTicket(ocrText) {
     }
   }
 
-  if (totalAmount === 0 && items.length > 0) {
-    totalAmount = items.reduce((sum, item) => sum + item.price, 0);
-  }
-
   return {
-    concept: 'CHEDRAUI',
+    concept: concept.toUpperCase(),
     amount: Number(totalAmount.toFixed(2)) || 0,
     category: category,
-    description: 'Ticket escaneado de CHEDRAUI',
+    description: `Ticket escaneado de ${concept}`,
     items: items,
     date: ticketDate || new Date().toISOString().split('T')[0],
-    engine: 'MOBILE_CHEDRAUI_ULTIMATE_PRO'
+    engine: 'MOBILE_SEMANTIC_STABLE_HYBRID'
   };
 }
 
