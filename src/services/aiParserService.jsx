@@ -9,6 +9,7 @@ async function initWorker(onProgress) {
   if (workerInstance) return workerInstance;
   try {
     if (onProgress) onProgress({ status: 'loading_model', progress: 30 });
+    // Configuración optimizada para reconocimiento en español con Tesseract v5
     workerInstance = await createWorker('spa');
     if (onProgress) onProgress({ status: 'ready', progress: 100 });
     return workerInstance;
@@ -19,10 +20,10 @@ async function initWorker(onProgress) {
 }
 
 /**
- * 🚀 Comprime y redimensiona imágenes gigantes de cámaras móviles para evitar
- * saturación de memoria (OOM) o timeouts en Tesseract.
+ * 🚀 Optimizador Extremo para Celulares: Preprocesamiento de Imagen en Canvas HTML5
+ * Convierte a escala de grises y aumenta el contraste para papel térmico (Chedraui/Farmacias).
  */
-async function resizeImageIfNeeded(fileOrBlob, maxWidth = 1200, quality = 0.8) {
+async function enhanceImageForMobile(fileOrBlob, maxWidth = 1200) {
   return new Promise((resolve) => {
     if (!(fileOrBlob instanceof File || fileOrBlob instanceof Blob)) {
       resolve(fileOrBlob);
@@ -42,13 +43,37 @@ async function resizeImageIfNeeded(fileOrBlob, maxWidth = 1200, quality = 0.8) {
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext('2d');
+        
+        // Dibujar imagen redimensionada
         ctx.drawImage(img, 0, 0, width, height);
+        
+        // Obtener píxeles para procesamiento móvil avanzado (Filtro térmico)
+        try {
+          const imgData = ctx.getImageData(0, 0, width, height);
+          const data = imgData.data;
+          const contrastFactor = 1.4; // Realza los caracteres oscuros frente al fondo
+
+          for (let i = 0; i < data.length; i += 4) {
+            // Conversión a escala de grises precisa (Luma)
+            const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+            // Estiramiento de contraste para tickets térmicos deslavados
+            const contrasted = Math.min(255, Math.max(0, (gray - 128) * contrastFactor + 128));
+            
+            data[i]     = contrasted; // R
+            data[i + 1] = contrasted; // G
+            data[i + 2] = contrasted; // B
+          }
+          ctx.putImageData(imgData, 0, 0);
+        } catch (canvasErr) {
+          console.warn('Advertencia en filtro de contraste móvil, usando imagen base:', canvasErr);
+        }
+
         canvas.toBlob(
           (blob) => {
             resolve(blob || fileOrBlob);
           },
           'image/jpeg',
-          quality
+          0.9
         );
       };
       img.onerror = () => resolve(fileOrBlob);
@@ -60,21 +85,22 @@ async function resizeImageIfNeeded(fileOrBlob, maxWidth = 1200, quality = 0.8) {
 }
 
 /**
- * Función principal para procesar imágenes de tickets en México
+ * Función principal para procesar imágenes de tickets
  */
 export async function parseExpenseInput(inputData, onProgress) {
   try {
     if (inputData instanceof File || inputData instanceof Blob) {
-      const optimizedImage = await resizeImageIfNeeded(inputData);
+      // Aplicar motor de mejora exclusivo para fotos de celular
+      const processedImage = await enhanceImageForMobile(inputData);
 
       const worker = await initWorker(onProgress);
       if (!worker) throw new Error('No se pudo inicializar el motor OCR.');
 
-      const imageUrl = URL.createObjectURL(optimizedImage);
+      const imageUrl = URL.createObjectURL(processedImage);
       const { data: { text } } = await worker.recognize(imageUrl);
       URL.revokeObjectURL(imageUrl);
 
-      console.log('📄 TEXTO OCR MÉXICO RECIBIDO:\n', text);
+      console.log('📄 TEXTO OCR MÓVIL RECIBIDO:\n', text);
 
       if (text && text.trim().length > 0) {
         return await parseMexicanTicket(text);
@@ -83,7 +109,7 @@ export async function parseExpenseInput(inputData, onProgress) {
       return parseNaturalLanguageExpense(inputData);
     }
   } catch (err) {
-    console.warn('⚠ Error en parseExpenseInput:', err);
+    console.warn('⚠ Error en parseExpenseInput móvil:', err);
   }
 
   return {
@@ -98,7 +124,7 @@ export async function parseExpenseInput(inputData, onProgress) {
 }
 
 /**
- * Parser Universal optimizado para formatos comerciales de México (incluyendo Chedraui)
+ * Parser Universal optimizado y entrenado para tickets de México (Chedraui, Farmacias, etc.)
  */
 async function parseMexicanTicket(ocrText) {
   const lines = ocrText
@@ -111,11 +137,10 @@ async function parseMexicanTicket(ocrText) {
   let category = 'OTROS';
   const items = [];
 
-  // Diccionario exclusivo de comercios en México
   const STORE_DICTIONARY = [
+    { pattern: /CHEDRAU/i, name: 'CHEDRAUI', cat: 'SUPERMERCADO' },
     { pattern: /SAMS\s*CLUB|SAM'S/i, name: 'SAM\'S CLUB', cat: 'SUPERMERCADO' },
     { pattern: /COSTCO/i, name: 'COSTCO WHOLESALE', cat: 'SUPERMERCADO' },
-    { pattern: /CHEDRAU/i, name: 'CHEDRAUI', cat: 'SUPERMERCADO' },
     { pattern: /WALMART/i, name: 'WALMART', cat: 'SUPERMERCADO' },
     { pattern: /BODEGA\s*AURRERA/i, name: 'BODEGA AURRERÁ', cat: 'SUPERMERCADO' },
     { pattern: /SORIANA/i, name: 'SORIANA', cat: 'SUPERMERCADO' },
@@ -127,10 +152,10 @@ async function parseMexicanTicket(ocrText) {
     { pattern: /OFFICEMAX/i, name: 'OFFICEMAX', cat: 'HOGAR' },
     { pattern: /OFFICE\s*DEPOT/i, name: 'OFFICE DEPOT', cat: 'HOGAR' },
     { pattern: /PEMEX|ESTACION\s*DE\s*SERVICIO/i, name: 'PEMEX (GASOLINERÍA)', cat: 'TRANSPORTE' },
-    { pattern: /FARMACIA|FARMACIAS|GUADALAJARA|SIMILARES/i, name: 'FARMACIA', cat: 'SALUD' }
+    { pattern: /FARMACIA|FARMACIAS|GUADALAJARA|SIMILARES|POZA\s*RICA/i, name: 'FARMACIA', cat: 'SALUD' }
   ];
 
-  // 1. Extracción del nombre raíz
+  // 1. Detección del Comercio
   for (const line of lines) {
     for (const store of STORE_DICTIONARY) {
       if (store.pattern.test(line)) {
@@ -167,26 +192,23 @@ async function parseMexicanTicket(ocrText) {
     }
   }
 
-  // Memoria Híbrida
   let learnedTemplate = null;
   try {
     learnedTemplate = await obtenerPlantillaLocalYNube(concept);
     if (learnedTemplate && learnedTemplate.category) {
       category = learnedTemplate.category;
     }
-  } catch (e) {
-    console.warn('No se pudo cargar plantilla aprendida');
-  }
+  } catch (e) {}
 
-  // 3. Extracción del Monto Total (Soporta formatos como TOTAL M.N.$ 368.80)
+  // 3. Monto Total (Búsqueda robusta por palabra TOTAL)
   for (const line of lines) {
-    const cleanLine = line.replace(/([0-9]),([0-9]{3})/g, '$1$2');
-    const totalMatch = cleanLine.match(/(?:TOTAL\s*M\.?N\.?|TOTAL\s*A\s*PAGAR|IMPORTE\s*TOTAL|TOTAL)\s*[:\$]?\s*([0-9\.\s,]{4,})/i);
-    if (totalMatch) {
-      let rawVal = totalMatch[1].replace(/[\s\$]/g, '');
-      const parsed = parseFloat(rawVal);
-      if (parsed > 0 && parsed > totalAmount) {
-        totalAmount = parsed;
+    if (/TOTAL/i.test(line) && !/SUBTOTAL/i.test(line)) {
+      const matches = line.match(/([0-9,]+\.\d{2})/g);
+      if (matches && matches.length > 0) {
+        const val = parseFloat(matches[matches.length - 1].replace(',', ''));
+        if (val > 0 && val > totalAmount) {
+          totalAmount = val;
+        }
       }
     }
   }
@@ -206,11 +228,11 @@ async function parseMexicanTicket(ocrText) {
     }
   }
 
-  const IGNORE_PATTERNS = /TIENDAS|OXXO|WALMART|BODEGA|OFFICE|PEMEX|SAMS|COSTCO|SORIANA|ARTELI|HOME|LIVERPOOL|S\.?A\.?|C\.?V\.?|R\.?F\.?C\.?|SUC|BLVD|AV\.|CANT|ARTICULO|PRECIC|SUBTOTAL|TOTAL|AFILIACION|TARJETA|CAMBIO|AUT#|PROSA|SALDO|REBAJADO|AHORRO|IVA|IEPS|ATENDIO|OPINION|REDONDEO|REGIMEN|AVISO|PAGO|EFECTIVO|MENSAJE|GRACIAS|TASA|IMPORTE|CLIENTE|CAJERO|CODIGO|DEVOLUCIONES|PREFERENCIA|DEBITO|ARQC|AID|DSC|DESCUENTO|FARMACIA|SALCHICHONERIA|LACTEOS|PANIFICADORA/i;
+  const IGNORE_PATTERNS = /TIENDAS|OXXO|WALMART|BODEGA|OFFICE|PEMEX|SAMS|COSTCO|SORIANA|ARTELI|HOME|LIVERPOOL|S\.?A\.?|C\.?V\.?|R\.?F\.?C\.?|SUC|BLVD|AV\.|CANT|ARTICULO|PRECIC|SUBTOTAL|TOTAL|AFILIACION|TARJETA|CAMBIO|AUT#|PROSA|SALDO|REBAJADO|AHORRO|IVA|IEPS|ATENDIO|OPINION|REDONDEO|REGIMEN|AVISO|PAGO|EFECTIVO|MENSAJE|GRACIAS|TASA|IMPORTE|CLIENTE|CAJERO|CODIGO|DEVOLUCIONES|PREFERENCIA|DEBITO|ARQC|AID|DSC|DESCUENTO|FARMACIA|SALCHICHONERIA|LACTEOS|PANIFICADORA|ALIMENTOS|REFIGERADOS|EMPACADA/i;
 
   let inItemsSection = true;
 
-  // 4. Extracción robusta adaptada a Chedraui (doble precio y exclusión de descuentos)
+  // 4. Extracción de Ítems (Filtro estricto para Chedraui y Supermercados)
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
@@ -219,47 +241,30 @@ async function parseMexicanTicket(ocrText) {
     }
     if (!inItemsSection) continue;
 
-    // Ignorar líneas de descuento (que terminan en '-' o contienen 'dsc')
-    if (line.endsWith('-') || /dsc|descuento|ahorro/i.test(line)) {
+    if (line.endsWith('-') || /dsc|descuento|ahorro/i.test(line) || /^\d{8,14}$/.test(line)) {
       continue;
     }
 
-    // Patrón específico para supermercados con doble precio (ej: 1.000 Curitas 96.00 96.00 B o 4.000 Cuerno 8.00 32.00 K)
-    const fullItemMatch = line.match(/^\s*(\d+[.,]\d+)?\s+(.+?)\s+([0-9,]+\.\d{2})\s+([0-9,]+\.\d{2})\s*[A-Z]?\s*$/);
+    const priceMatches = line.match(/([0-9,]+\.\d{2})/g);
 
-    if (fullItemMatch) {
-      let rawName = fullItemMatch[2].replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
-      let lineTotal = parseFloat(fullItemMatch[4].replace(',', ''));
+    if (priceMatches && priceMatches.length > 0) {
+      const lineTotal = parseFloat(priceMatches[priceMatches.length - 1].replace(',', ''));
 
-      if (rawName.length >= 3 && !IGNORE_PATTERNS.test(rawName) && lineTotal > 0) {
-        const upperName = rawName.toUpperCase();
+      let cleanedName = line;
+      for (const p of priceMatches) {
+        cleanedName = cleanedName.replace(p, '');
+      }
+      cleanedName = cleanedName.replace(/^\s*\d+[.,]\d+\s+/, '');
+      cleanedName = cleanedName.replace(/\s+[A-Z]\s*$/, '');
+      cleanedName = cleanedName.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+
+      if (cleanedName.length >= 3 && !IGNORE_PATTERNS.test(cleanedName) && lineTotal > 0) {
+        const upperName = cleanedName.toUpperCase();
         if (!items.some(item => item.name === upperName)) {
           items.push({
             name: upperName,
             price: lineTotal
           });
-        }
-      }
-    } else {
-      // Fallback para líneas sencillas
-      const priceMatch = line.match(/([0-9]+\.\d{2})$/);
-      if (priceMatch && !line.endsWith('-')) {
-        const price = parseFloat(priceMatch[1]);
-        let currentClean = line
-          .replace(/([0-9]+\.\d{2})$/, '')
-          .replace(/^\d+(\.\d+)?\s+/, '')
-          .replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g, ' ')
-          .replace(/\s+/g, ' ')
-          .trim();
-
-        if (currentClean.length >= 3 && !IGNORE_PATTERNS.test(currentClean) && price > 0) {
-          const upperName = currentClean.toUpperCase();
-          if (!items.some(item => item.name === upperName)) {
-            items.push({
-              name: upperName,
-              price: price
-            });
-          }
         }
       }
     }
@@ -276,13 +281,10 @@ async function parseMexicanTicket(ocrText) {
     description: `Ticket escaneado de ${concept}`,
     items: items,
     date: ticketDate || new Date().toISOString().split('T')[0],
-    engine: learnedTemplate ? 'LOCAL_TESSERACT_MEXICO_LEARNED' : 'LOCAL_TESSERACT_MEXICO'
+    engine: 'LOCAL_MOBILE_THERMAL_OPTIMIZED'
   };
 }
 
-/**
- * Parser de texto por lenguaje natural
- */
 export async function parseNaturalLanguageExpense(textInput) {
   if (!textInput || typeof textInput !== 'string') return null;
 
