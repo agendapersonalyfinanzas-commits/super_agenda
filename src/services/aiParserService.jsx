@@ -19,7 +19,7 @@ async function initWorker(onProgress) {
 }
 
 /**
- * 🚀 Preprocesamiento móvil ultraligero en Canvas para tickets térmicos
+ * 🚀 Preprocesamiento móvil profesional en Canvas (escala de grises y contraste para tickets térmicos)
  */
 async function enhanceImageForMobile(fileOrBlob, maxWidth = 1200) {
   return new Promise((resolve) => {
@@ -46,7 +46,7 @@ async function enhanceImageForMobile(fileOrBlob, maxWidth = 1200) {
         try {
           const imgData = ctx.getImageData(0, 0, width, height);
           const data = imgData.data;
-          const contrastFactor = 1.4;
+          const contrastFactor = 1.3;
 
           for (let i = 0; i < data.length; i += 4) {
             const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
@@ -79,7 +79,7 @@ export async function parseExpenseInput(inputData, onProgress) {
       const { data: { text } } = await worker.recognize(imageUrl);
       URL.revokeObjectURL(imageUrl);
 
-      console.log('📄 TEXTO OCR SEMÁNTICO RECIBIDO:\n', text);
+      console.log('📄 TEXTO OCR RECIBIDO:\n', text);
 
       if (text && text.trim().length > 0) {
         return await parseMexicanTicket(text);
@@ -103,7 +103,7 @@ export async function parseExpenseInput(inputData, onProgress) {
 }
 
 /**
- * Parser con Motor Semántico Estable y Memoria Híbrida
+ * Parser Maestro Estructural para Tickets en México (Chedraui, etc.)
  */
 async function parseMexicanTicket(ocrText) {
   const lines = ocrText
@@ -138,7 +138,7 @@ async function parseMexicanTicket(ocrText) {
     if (concept !== 'CHEDRAUI') break;
   }
 
-  // 🧠 Memoria Híbrida
+  // Memoria Híbrida
   let learnedTemplate = null;
   try {
     learnedTemplate = await obtenerPlantillaLocalYNube(concept);
@@ -147,7 +147,7 @@ async function parseMexicanTicket(ocrText) {
     }
   } catch (e) {}
 
-  // 1. Detección de Fecha
+  // 1. Extracción de Fecha
   let ticketDate = null;
   const MONTH_MAP = {
     'ENE': '01', 'FEB': '02', 'MAR': '03', 'ABR': '04', 'MAY': '05', 'JUN': '06',
@@ -171,7 +171,7 @@ async function parseMexicanTicket(ocrText) {
     }
   }
 
-  // 2. Extracción Semántica del Monto Total (Evita SUBTOTAL)
+  // 2. Extracción del Monto Total (Búsqueda estricta en línea TOTAL, ignorando SUBTOTAL)
   for (const line of lines) {
     if (/TOTAL/i.test(line) && !/SUBTOTAL/i.test(line)) {
       const matches = line.match(/([0-9,]+\.\d{2})/g);
@@ -189,7 +189,7 @@ async function parseMexicanTicket(ocrText) {
 
   let inItemsSection = true;
 
-  // 3. Extracción Semántica Segura de Ítems
+  // 3. Extracción Estructural Segura de Ítems (Respetando precios originales)
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
@@ -198,15 +198,19 @@ async function parseMexicanTicket(ocrText) {
     }
     if (!inItemsSection) continue;
 
+    // Ignorar líneas de descuento (terminadas en '-' o con 'dsc') y códigos de barras
     if (line.endsWith('-') || /dsc|descuento|ahorro|%/.test(line) || /^\d{8,14}$/.test(line)) {
       continue;
     }
 
+    // Buscar precios con decimales exactos en la línea (ej: 48.00, 96.00)
     const priceMatches = line.match(/([0-9,]+\.\d{2})/g);
 
     if (priceMatches && priceMatches.length > 0) {
+      // El último precio es el total real de la línea
       const lineTotal = parseFloat(priceMatches[priceMatches.length - 1].replace(',', ''));
 
+      // Limpieza segura del nombre del producto (sin alterar dígitos de precios)
       let cleanedName = line;
       for (const p of priceMatches) {
         cleanedName = cleanedName.replace(p, '');
@@ -227,6 +231,11 @@ async function parseMexicanTicket(ocrText) {
     }
   }
 
+  // Fallback si el total no se leyó pero hay ítems
+  if (totalAmount === 0 && items.length > 0) {
+    totalAmount = items.reduce((sum, item) => sum + item.price, 0);
+  }
+
   return {
     concept: concept.toUpperCase(),
     amount: Number(totalAmount.toFixed(2)) || 0,
@@ -234,7 +243,7 @@ async function parseMexicanTicket(ocrText) {
     description: `Ticket escaneado de ${concept}`,
     items: items,
     date: ticketDate || new Date().toISOString().split('T')[0],
-    engine: 'MOBILE_SEMANTIC_STABLE_HYBRID'
+    engine: 'MOBILE_EXPERT_TRAINED_V2'
   };
 }
 
