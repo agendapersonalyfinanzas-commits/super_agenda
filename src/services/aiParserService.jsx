@@ -6,28 +6,213 @@ import { obtenerPlantillaLocalYNube } from './templateService';
 let workerInstance = null;
 
 /**
- * 🏢 Diccionario Canónico Integrado para México (Tolerancia a erratas de OCR)
+ * 🏢 Diccionario Canónico Masivo para México (Supermercados, Gasolineras, Comida Rápida, Tiendas y Servicios)
  */
 const CANONICAL_MERCHANTS = [
+  // --- SUPERMERCADOS Y CLUBES DE PRECIOS ---
   {
     canonical: 'CHEDRAUI',
     category: 'SUPERMERCADO',
-    aliases: ['CHEDRAUI', 'CHEDRAHUI', 'CHEDRAUT', 'CHEDRAU', 'TIENDAS CHEDRAUI']
+    aliases: ['CHEDRAUI', 'CHEDRAHUI', 'CHEDRAUT', 'CHEDRAU', 'TIENDAS CHEDRAUI', 'SUPER CHE']
   },
   {
     canonical: 'WALMART',
     category: 'SUPERMERCADO',
-    aliases: ['WALMART', 'WAL MART', 'BODEGA AURRERA', 'AURRERA']
+    aliases: ['WALMART', 'WAL MART', 'BODEGA AURRERA', 'AURRERA', 'EXPRESS AURRERA', 'SUPERAMA']
   },
   {
-    canonical: 'FARMACIAS POZA RICA',
-    category: 'SALUD',
-    aliases: ['FARMACIAS POZA RICA', 'FARMACIA POZA RICA', 'FARMACIAS GUADALAJARA', 'FARMACIAS SIMILARES', 'FARMACIAS']
+    canonical: 'SORIANA',
+    category: 'SUPERMERCADO',
+    aliases: ['SORIANA', 'HIPER SORIANA', 'SORIANA HIERRO', 'SORIANA EXPRESS', 'SUPER CITY', 'CITY CLUB']
   },
+  {
+    canonical: 'SAM\'S CLUB',
+    category: 'SUPERMERCADO',
+    aliases: ['SAMS CLUB', 'SAM\'S CLUB', 'SAMS', 'SAM', 'CLUB SAMS']
+  },
+  {
+    canonical: 'COSTCO',
+    category: 'SUPERMERCADO',
+    aliases: ['COSTCO', 'COSTCO WHOLESALE']
+  },
+
+  // --- SALUD Y FARMACIAS ---
+  {
+    canonical: 'FARMACIAS GUADALAJARA',
+    category: 'SALUD',
+    aliases: ['FARMACIAS GUADALAJARA', 'FARMACIA GUADALAJARA', 'FARMACIAS GDL']
+  },
+  {
+    canonical: 'FARMACIAS DEL AHORRO',
+    category: 'SALUD',
+    aliases: ['FARMACIAS DEL AHORRO', 'FARMACIA DEL AHORRO', 'DEL AHORRO']
+  },
+  {
+    canonical: 'FARMACIAS SIMILARES',
+    category: 'SALUD',
+    aliases: ['FARMACIAS SIMILARES', 'FARMACIA SIMILARES', 'DR SIMI', 'FARMACIAS DE LOS SIMILARES']
+  },
+  {
+    canonical: 'FARMACIAS BENAVIDES',
+    category: 'SALUD',
+    aliases: ['FARMACIAS BENAVIDES', 'FARMACIA BENAVIDES']
+  },
+
+  // --- TRANSPORTE Y GASOLINERAS ---
+  {
+    canonical: 'PEMEX',
+    category: 'TRANSPORTE',
+    aliases: ['PEMEX', 'PETROLEOS MEXICANOS', 'GASOLINERA PEMEX']
+  },
+  {
+    canonical: 'REPSOL',
+    category: 'TRANSPORTE',
+    aliases: ['REPSOL', 'GASOLINERA REPSOL']
+  },
+  {
+    canonical: 'MOBIL',
+    category: 'TRANSPORTE',
+    aliases: ['MOBIL', 'GASOLINERA MOBIL', 'EXXONMOBIL']
+  },
+  {
+    canonical: 'G500',
+    category: 'TRANSPORTE',
+    aliases: ['G500', 'GRUPO G500', 'GASOLINERA G500']
+  },
+  {
+    canonical: 'BP',
+    category: 'TRANSPORTE',
+    aliases: ['BP', 'GASOLINERA BP']
+  },
+  {
+    canonical: 'SHELL',
+    category: 'TRANSPORTE',
+    aliases: ['SHELL', 'GASOLINERA SHELL']
+  },
+
+  // --- TIENDAS DE CONVENIENCIA Y CAFETERÍAS ---
   {
     canonical: 'OXXO',
     category: 'ALIMENTOS',
     aliases: ['OXXO', 'CADENA COMERCIAL OXXO']
+  },
+  {
+    canonical: '7-ELEVEN',
+    category: 'ALIMENTOS',
+    aliases: ['7-ELEVEN', 'SEVEN ELEVEN', '7 ELEVEN']
+  },
+  {
+    canonical: 'LA PARROQUIA',
+    category: 'ALIMENTOS',
+    aliases: ['LA PARROQUIA', 'CAFE LA PARROQUIA', 'GRAN CAFE DE LA PARROQUIA']
+  },
+  {
+    canonical: 'CAFÉ ANDRADE',
+    category: 'ALIMENTOS',
+    aliases: ['CAFE ANDRADE', 'CAFÉ ANDRADE', 'CAFFENIO']
+  },
+  {
+    canonical: 'STARBUCKS',
+    category: 'ALIMENTOS',
+    aliases: ['STARBUCKS', 'STARBUCKS COFFEE']
+  },
+
+  // --- RESTAURANTES Y COMIDA RÁPIDA ---
+  {
+    canonical: 'SANBORNS',
+    category: 'ALIMENTOS',
+    aliases: ['SANBORNS', 'SAMBORNS', 'CAFE SANBORNS']
+  },
+  {
+    canonical: 'SUSHI GO',
+    category: 'ALIMENTOS',
+    aliases: ['SUSHI GO', 'SUSHIITO', 'SUSHI ROLL']
+  },
+  {
+    canonical: 'MCDONALD\'S',
+    category: 'ALIMENTOS',
+    aliases: ['MCDONALDS', 'MCDONALD\'S', 'MACDONALDS']
+  },
+  {
+    canonical: 'BURGER KING',
+    category: 'ALIMENTOS',
+    aliases: ['BURGER KING', 'BK']
+  },
+  {
+    canonical: 'SUBWAY',
+    category: 'ALIMENTOS',
+    aliases: ['SUBWAY']
+  },
+  {
+    canonical: 'PIZZA HUT',
+    category: 'ALIMENTOS',
+    aliases: ['PIZZA HUT']
+  },
+  {
+    canonical: 'DOMINO\'S PIZZA',
+    category: 'ALIMENTOS',
+    aliases: ['DOMINOS PIZZA', 'DOMINO\'S', 'DOMINOS']
+  },
+  {
+    canonical: 'CARL\'S JR',
+    category: 'ALIMENTOS',
+    aliases: ['CARLS JR', 'CARL\'S JR', 'CARLS']
+  },
+  {
+    canonical: 'LITTLE CAESARS',
+    category: 'ALIMENTOS',
+    aliases: ['LITTLE CAESARS', 'LITTLE CAESAR\'S', 'LITTLECAESARS']
+  },
+  {
+    canonical: 'PAPA JOHN\'S',
+    category: 'ALIMENTOS',
+    aliases: ['PAPA JOHNS', 'PAPA JOHN\'S']
+  },
+
+  // --- ENTRETENIMIENTO ---
+  {
+    canonical: 'CINÉPOLIS',
+    category: 'ENTRETENIMIENTO',
+    aliases: ['CINEPOLIS', 'CINÉPOLIS', 'CINEMAS CINEPOLIS']
+  },
+  {
+    canonical: 'CINEMEX',
+    category: 'ENTRETENIMIENTO',
+    aliases: ['CINEMEX']
+  },
+
+  // --- TIENDAS DEPARTAMENTALES Y COMPRAS ---
+  {
+    canonical: 'LIVERPOOL',
+    category: 'COMPRAS',
+    aliases: ['LIVERPOOL', 'EL PUERTO DE LIVERPOOL', 'FABRICAS DE FRANCIA']
+  },
+  {
+    canonical: 'SUBURBIA',
+    category: 'COMPRAS',
+    aliases: ['SUBURBIA']
+  },
+  {
+    canonical: 'SEARS',
+    category: 'COMPRAS',
+    aliases: ['SEARS']
+  },
+  {
+    canonical: 'OFFICE DEPOT',
+    category: 'COMPRAS',
+    aliases: ['OFFICE DEPOT', 'OFFICEDEPOT']
+  },
+
+  // --- SERVICIOS BÁSICOS ---
+  {
+    canonical: 'CFE',
+    category: 'SERVICIOS',
+    aliases: ['CFE', 'COMISION FEDERAL DE ELECTRICIDAD', 'CFE SUMINISTRO BASICO']
+  },
+  {
+    canonical: 'TELMEX',
+    category: 'SERVICIOS',
+    aliases: ['TELMEX', 'TELEFONOS DE MEXICO', 'INFONET']
   }
 ];
 
@@ -147,7 +332,7 @@ export async function parseExpenseInput(inputData, onProgress) {
 }
 
 /**
- * Parser Maestro Estructural para Tickets en México (Chedraui, etc.)
+ * Parser Maestro Estructural para Tickets en México
  */
 async function parseMexicanTicket(ocrText) {
   const lines = ocrText
@@ -156,7 +341,7 @@ async function parseMexicanTicket(ocrText) {
     .filter((l) => l.length > 0);
 
   // Resolver comercio y categoría canónica a partir de las primeras líneas del ticket
-  const rawHeader = lines.slice(0, 4).join(' ');
+  const rawHeader = lines.slice(0, 5).join(' ');
   const canonicalResult = resolveCanonicalMerchant(rawHeader);
 
   let concept = canonicalResult.name;
@@ -214,7 +399,7 @@ async function parseMexicanTicket(ocrText) {
 
   let inItemsSection = true;
 
-  // 3. Extracción Estructural Segura de Ítems (Respetando precios originales)
+  // 3. Extracción Estructural Segura de Ítems
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
@@ -223,19 +408,15 @@ async function parseMexicanTicket(ocrText) {
     }
     if (!inItemsSection) continue;
 
-    // Ignorar líneas de descuento (terminadas en '-' o con 'dsc') y códigos de barras
     if (line.endsWith('-') || /dsc|descuento|ahorro|%/.test(line) || /^\d{8,14}$/.test(line)) {
       continue;
     }
 
-    // Buscar precios con decimales exactos en la línea (ej: 48.00, 96.00)
     const priceMatches = line.match(/([0-9,]+\.\d{2})/g);
 
     if (priceMatches && priceMatches.length > 0) {
-      // El último precio es el total real de la línea
       const lineTotal = parseFloat(priceMatches[priceMatches.length - 1].replace(',', ''));
 
-      // Limpieza segura del nombre del producto (sin alterar dígitos de precios)
       let cleanedName = line;
       for (const p of priceMatches) {
         cleanedName = cleanedName.replace(p, '');
@@ -256,7 +437,6 @@ async function parseMexicanTicket(ocrText) {
     }
   }
 
-  // Fallback si el total no se leyó pero hay ítems
   if (totalAmount === 0 && items.length > 0) {
     totalAmount = items.reduce((sum, item) => sum + item.price, 0);
   }
@@ -268,7 +448,7 @@ async function parseMexicanTicket(ocrText) {
     description: `Ticket escaneado de ${concept}`,
     items: items,
     date: ticketDate || new Date().toISOString().split('T')[0],
-    engine: 'MOBILE_EXPERT_CANONICAL_V3'
+    engine: 'MOBILE_EXPERT_MEGA_CANONICAL_V4'
   };
 }
 
