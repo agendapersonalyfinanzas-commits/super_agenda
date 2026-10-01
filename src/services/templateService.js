@@ -1,96 +1,79 @@
 // src/services/templateService.js
 
 import { supabase } from '../supabaseClient';
-import { agregarAColaOffline } from '../utils/offlineSync';
+import { guardarEnStorage, obtenerDeStorage } from '../utils/storage.js';
 
-const LOCAL_CACHE_KEY = 'app_store_templates_cache';
-
-/**
- * Consulta si existe una plantilla aprendida para un comercio (Offline-first)
- */
-export async function obtenerPlantillaLocalYNube(storeName) {
-  if (!storeName) return null;
-  const normalizedStore = storeName.toUpperCase().trim();
-
-  // 1. Buscar primero en caché local (Velocidad instantánea y sin conexión)
-  try {
-    const localCache = JSON.parse(localStorage.getItem(LOCAL_CACHE_KEY) || '{}');
-    if (localCache[normalizedStore]) {
-      return localCache[normalizedStore];
-    }
-  } catch (e) {
-    console.warn('Error leyendo caché local de plantillas:', e);
-  }
-
-  // 2. Si hay red, consultar en Supabase
-  if (navigator.onLine) {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user?.email) {
-        const { data, error } = await supabase
-          .from('store_templates')
-          .select('template_rules')
-          .eq('store_name', normalizedStore)
-          .maybeSingle(); // 👈 CAMBIO CLAVE: .maybeSingle() evita el error 406 si la tienda no existe
-
-        if (data && !error && data.template_rules) {
-          // Guardar en caché local para futuros escaneos offline
-          const localCache = JSON.parse(localStorage.getItem(LOCAL_CACHE_KEY) || '{}');
-          localCache[normalizedStore] = data.template_rules;
-          localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(localCache));
-
-          return data.template_rules;
-        }
-      }
-    } catch (err) {
-      console.warn('No se pudo conectar a Supabase para recuperar plantilla:', err);
-    }
-  }
-
-  return null;
-}
+const TEMPLATES_CACHE_KEY = 'family_store_templates_cache';
 
 /**
- * Guarda o actualiza una plantilla aprendida (Enseña al sistema tras corrección manual)
+ * Guarda o actualiza una plantilla para que el sistema aprenda automáticamente de las correcciones.
  */
-export async function guardarYCrearPlantilla(storeName, rules) {
-  if (!storeName) return;
-  const normalizedStore = storeName.toUpperCase().trim();
-
-  // 1. Guardar en caché local inmediatamente
+export async function guardarPlantillaLocalYNube(templateData) {
   try {
-    const localCache = JSON.parse(localStorage.getItem(LOCAL_CACHE_KEY) || '{}');
-    localCache[normalizedStore] = rules;
-    localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(localCache));
-  } catch (e) {
-    console.warn('Error guardando en caché local:', e);
-  }
-
-  // 2. Sincronizar con Supabase respetando tus políticas RLS
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: sessionData } = await supabase.auth.getSession();
+    const user = sessionData?.session?.user;
     if (!user) return;
 
     const payload = {
       user_id: user.id,
-      auth_user_email: user.email,
-      store_name: normalizedStore,
-      template_rules: rules,
+      concept: templateData.concept.toUpperCase(),
+      category: templateData.category.toUpperCase(),
+      items_count: templateData.itemsCount || 0,
       updated_at: new Date().toISOString()
     };
 
-    if (!navigator.onLine) {
-      await agregarAColaOffline('UPSERT', 'store_templates', payload);
-      return;
+    // 1. Guardar en caché local (Offline-First)
+    const localTemplates = obtenerDeStorage(TEMPLATES_CACHE_KEY, []);
+    const existingIndex = localTemplates.findIndex(t => t.concept === payload.concept);
+    if (existingIndex >= 0) {
+      localTemplates[existingIndex] = payload;
+    } else {
+      localTemplates.push(payload);
     }
+    guardarEnStorage(TEMPLATES_CACHE_KEY, localTemplates);
 
-    const { error } = await supabase
-      .from('store_templates')
-      .upsert(payload, { onConflict: 'user_id, store_name' });
+    // 2. Persistir en la tabla 'store_templates' de Supabase
+    if (navigator.onLine) {
+      const { error } = await supabase
+        .from('store_templates')
+        .upsert(payload, { onConflict: 'user_id, concept' });
 
-    if (error) throw error;
-    console.log(`🧠 Plantilla de '${normalizedStore}' sincronizada con éxito en Supabase.`);
+      if (error) {
+        console.warn('[Template Service] Error al guardar plantilla en la nube:', error.message);
+      }
+    }
   } catch (err) {
-    console.error('Error al sincronizar plantilla en Supabase:', err);
+    console.error('[Template Service] Error en ciclo de aprendizaje:', err);
   }
+}
+
+// 🔗 Alias de compatibilidad para que OCRScanner.jsx y otros componentes lo reconozcan
+export const guardarYCrearPlantilla = guardarPlantillaLocalYNube;
+
+/**
+ * Consulta la memoria de aprendizaje para acelerar la categorización de conceptos conocidos.
+ */
+export async function obtenerPlantillaLocalYNube(conceptName) {
+  if (!conceptName) return null;
+  const upperConcept = conceptName.toUpperCase();
+
+  const localTemplates = obtenerDeStorage(TEMPLATES_CACHE_KEY, []);
+  const foundLocal = localTemplates.find(t => t.concept === upperConcept);
+  if (foundLocal) return foundLocal;
+
+  if (navigator.onLine) {
+    try {
+      const { data, error } = await supabase
+        .from('store_templates')
+        .select('*')
+        .eq('concept', upperConcept)
+        .maybeSingle();
+
+      if (!error && data) return data;
+    } catch (err) {
+      console.error('[Template Service] Error obteniendo plantilla:', err);
+    }
+  }
+
+  return null;
 }

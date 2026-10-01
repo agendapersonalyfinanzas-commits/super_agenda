@@ -1,3 +1,5 @@
+// src/components/QuickActionGrid.jsx
+
 import React, { useState, useEffect } from 'react';
 import QuickExpenseButton from './QuickExpenseButton';
 import { PRESET_MAP } from '../UI/Icons';
@@ -7,8 +9,8 @@ import CategoryManager from '../CategoryManager';
 import { parseNaturalLanguageExpense } from '../../services/aiParserService';
 import { createSpeechListener, isSpeechSupported } from '../../services/speechService';
 import { analyzeAndUpdatePrices } from '../../services/priceRadarService';
+import { guardarPlantillaLocalYNube } from '../../services/templateService';
 
-// Función auxiliar para resolver la ruta de la imagen
 const getIconSrc = (iconValue) => {
   if (!iconValue) return '/charlie-market.png';
   if (iconValue.startsWith('data:image')) return iconValue;
@@ -63,17 +65,16 @@ export default function QuickActionGrid(props) {
   const [isListening, setIsListening] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [detectedItems, setDetectedItems] = useState([]);
+  const [parserConfidence, setParserConfidence] = useState(1.0);
 
-  // Categorías dinámicas desde Supabase / Caché local
+  // Categorías dinámicas
   const [categories, setCategories] = useState(() => 
     obtenerDeStorage('family_categories_cache', [])
   );
   const [showCategoryManager, setShowCategoryManager] = useState(false);
 
-  // Drag & Drop
   const [draggedIndex, setDraggedIndex] = useState(null);
 
-  // Cargar categorías reales desde Supabase
   const fetchCategories = async () => {
     if (typeof navigator !== 'undefined' && !navigator.onLine) return;
     try {
@@ -137,6 +138,7 @@ export default function QuickActionGrid(props) {
       setTransDate(new Date().toISOString().split('T')[0]);
       setAiPromptText('');
       setDetectedItems([]);
+      setParserConfidence(1.0);
       setTransOpen(true);
     }
   };
@@ -149,7 +151,6 @@ export default function QuickActionGrid(props) {
     setConfigOpen(true);
   };
 
-  // 🎙 Dictado por voz nativo mediante speechService
   const handleStartVoiceDictation = () => {
     if (!isSpeechSupported()) {
       alert('Tu navegador no soporta el reconocimiento de voz. Utiliza Chrome o Edge.');
@@ -175,7 +176,6 @@ export default function QuickActionGrid(props) {
     }
   };
 
-  // ⚡ Procesar texto o dictado usando el motor local SAF-LE
   const handleProcessWithAI = async (textToProcess = aiPromptText) => {
     if (!textToProcess || !textToProcess.trim()) return;
     setIsAnalyzing(true);
@@ -187,6 +187,7 @@ export default function QuickActionGrid(props) {
         if (result.concept) setTransConcept(result.concept.toUpperCase());
         if (result.amount) setTransAmount(result.amount.toString());
         if (result.category) setTransCat(result.category.toUpperCase());
+        if (result.confidence) setParserConfidence(result.confidence);
         if (result.items && result.items.length > 0) {
           setDetectedItems(result.items);
         }
@@ -199,13 +200,12 @@ export default function QuickActionGrid(props) {
     }
   };
 
-  // 🛒 Funciones de actualización dinámica de Ítems en Radar
   const handleUpdateRadarItem = (index, field, value) => {
     const updated = [...detectedItems];
     let val = value;
 
     if (field === 'quantity') {
-      val = parseInt(value, 10) || 1;
+      val = parseFloat(value) || 1;
     } else if (field === 'price') {
       val = parseFloat(value) || 0;
     } else if (field === 'name') {
@@ -219,7 +219,6 @@ export default function QuickActionGrid(props) {
 
     setDetectedItems(updated);
 
-    // Recalcular el monto total automáticamente
     const newTotal = updated.reduce(
       (sum, item) => sum + ((Number(item.price) || 0) * (Number(item.quantity) || 1)), 
       0
@@ -227,6 +226,13 @@ export default function QuickActionGrid(props) {
     if (newTotal > 0) {
       setTransAmount(newTotal.toString());
     }
+  };
+
+  const handleAddRadarItem = () => {
+    setDetectedItems(prev => [
+      ...prev,
+      { name: 'NUEVO PRODUCTO', quantity: 1, price: 0 }
+    ]);
   };
 
   const handleRemoveRadarItem = (index) => {
@@ -307,7 +313,18 @@ export default function QuickActionGrid(props) {
       processTxHandler(transactionData, type);
     }
 
-    // 🌟 Alimentación automática del Radar de Precios si se detectaron ítems desglosados
+    // 🧠 CICLO DE APRENDIZAJE: Guardar plantilla local y en nube
+    try {
+      await guardarPlantillaLocalYNube({
+        concept: conceptName,
+        category: transCat.toUpperCase(),
+        itemsCount: detectedItems.length
+      });
+    } catch (err) {
+      console.error('Error al guardar plantilla de aprendizaje:', err);
+    }
+
+    // 🌟 Alimentación automática del Radar de Precios
     if (detectedItems && detectedItems.length > 0) {
       try {
         await analyzeAndUpdatePrices(detectedItems, conceptName);
@@ -329,7 +346,7 @@ export default function QuickActionGrid(props) {
           <button
             type="button"
             onClick={() => setIsEditMode(!isEditMode)}
-            className={`px-3 py-2 text-xs font-black rounded-xl border-4 border-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all cursor-pointer ${
+            className={`px-3 py-2 text-xs font-black rounded-xl border-4 border-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 transition-all cursor-pointer ${
               isEditMode ? 'bg-black text-white' : 'bg-white text-black'
             }`}
           >
@@ -338,7 +355,7 @@ export default function QuickActionGrid(props) {
         </div>
       </div>
 
-      {/* Rejilla de Botones de Acción */}
+      {/* Rejilla de Botones */}
       <div className="grid grid-cols-3 sm:grid-cols-4 gap-6 pt-2" onDragOver={handleDragOver}>
         {actions.map((action, idx) => {
           const uniqueKey = `${action.id || 'btn'}_${idx}`;
@@ -368,7 +385,6 @@ export default function QuickActionGrid(props) {
           );
         })}
 
-        {/* Botón Añadir */}
         <div className="flex flex-col items-center">
           <button
             type="button"
@@ -449,7 +465,7 @@ export default function QuickActionGrid(props) {
                 <label className="text-xs font-black uppercase mb-2 block text-black">Imagen del botón:</label>
                 <div className="flex items-center gap-4 mb-3 p-3 bg-white border-4 border-black rounded-xl">
                   <img src={getIconSrc(btnIcon)} alt="preview" className="w-16 h-16 object-cover rounded-full border-2 border-black" />
-                  <label className="bg-blue-400 text-black text-xs font-black p-2 rounded-lg border-2 border-black text-center cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 w-full">
+                  <label className="bg-blue-400 text-black text-xs font-black p-2 rounded-lg border-2 border-black text-center cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] w-full">
                     📸 CÁMARA / GALERÍA
                     <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
                   </label>
@@ -472,13 +488,13 @@ export default function QuickActionGrid(props) {
                 <button
                   type="button"
                   onClick={() => setConfigOpen(false)}
-                  className="flex-1 bg-white border-4 border-black py-2 rounded-xl font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 cursor-pointer text-black"
+                  className="flex-1 bg-white border-4 border-black py-2 rounded-xl font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer text-black"
                 >
                   CANCELAR
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 bg-amber-400 border-4 border-black py-2 rounded-xl font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 cursor-pointer text-black"
+                  className="flex-1 bg-amber-400 border-4 border-black py-2 rounded-xl font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer text-black"
                 >
                   GUARDAR
                 </button>
@@ -488,7 +504,7 @@ export default function QuickActionGrid(props) {
         </div>
       )}
 
-      {/* MODAL DE NUEVO GASTO / INGRESO CON IA LOCAL Y REGISTRO RETROACTIVO */}
+      {/* MODAL DE NUEVO GASTO / INGRESO */}
       {transOpen && transAction && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div className={`${type === 'expense' ? 'bg-rose-100' : 'bg-green-100'} border-4 border-black p-6 rounded-3xl w-full max-w-sm shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] max-h-[90vh] overflow-y-auto`}>
@@ -500,7 +516,7 @@ export default function QuickActionGrid(props) {
               </div>
             </div>
 
-            {/* ⚡ SECCIÓN DE ASISTENTE POR VOZ / IA LOCAL */}
+            {/* ASISTENTE POR VOZ / IA */}
             <div className="p-3 bg-sky-50 border-2 border-black rounded-2xl space-y-2 mb-3 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
               <label className="block text-[10px] font-black uppercase text-sky-900">
                 🎙️ Registro Rápido por Voz o IA
@@ -508,7 +524,7 @@ export default function QuickActionGrid(props) {
               <div className="flex gap-2">
                 <input 
                   type="text" 
-                  placeholder="Ej: Compré 2 cafés de 35 y un pan de 20 en OXXO" 
+                  placeholder="Ej: Compré 1.5 kg de limones a 35 y un café de 40" 
                   value={aiPromptText}
                   onChange={(e) => setAiPromptText(e.target.value)}
                   className="flex-1 px-3 py-1.5 border-2 border-black rounded-xl text-xs font-bold text-black bg-white focus:outline-none"
@@ -525,7 +541,7 @@ export default function QuickActionGrid(props) {
               </div>
               <div className="flex justify-between items-center pt-1">
                 <span className="text-[9px] font-bold text-stone-600">
-                  {detectedItems.length > 0 ? `✨ ${detectedItems.length} ítems detectados para radar` : 'Habla o escribe para autorellenar'}
+                  {detectedItems.length > 0 ? `✨ ${detectedItems.length} ítems en radar` : 'Habla o escribe para autorellenar'}
                 </span>
                 <button
                   type="button"
@@ -538,66 +554,84 @@ export default function QuickActionGrid(props) {
               </div>
             </div>
 
-            {/* 🛒 DESGLOSE Y EDICIÓN DE ÍTEMS DETECTADOS */}
-            {detectedItems && detectedItems.length > 0 && (
-              <div className="bg-amber-50 border-2 border-black rounded-2xl p-3 mb-3 font-mono shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
-                <div className="flex justify-between items-center mb-2 pb-1 border-b-2 border-black/20">
-                  <span className="text-[11px] font-black uppercase text-amber-950 flex items-center gap-1">
-                    🛒 Ítems en Radar ({detectedItems.length})
-                  </span>
+            {/* RADAR DE ÍTEMS CON ALERTA DE CONFIANZA */}
+            <div className={`border-2 border-black rounded-2xl p-3 mb-3 font-mono shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] ${
+              parserConfidence < 0.7 ? 'bg-amber-100' : 'bg-amber-50'
+            }`}>
+              {parserConfidence < 0.7 && (
+                <div className="text-[9px] font-black text-amber-900 bg-amber-200 p-1 rounded border border-black mb-2">
+                  ⚠ Confianza baja ({Math.round(parserConfidence * 100)}%). Verifica los montos.
+                </div>
+              )}
+
+              <div className="flex justify-between items-center mb-2 pb-1 border-b-2 border-black/20">
+                <span className="text-[11px] font-black uppercase text-amber-950 flex items-center gap-1">
+                  🛒 Ítems en Radar ({detectedItems.length})
+                </span>
+                <div className="flex gap-2 items-center">
                   <button
                     type="button"
-                    onClick={() => setDetectedItems([])}
-                    className="text-[9px] font-bold text-red-600 hover:underline cursor-pointer"
+                    onClick={handleAddRadarItem}
+                    className="text-[9px] font-black uppercase bg-pink-500 text-white px-2 py-0.5 rounded border border-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:bg-pink-600"
                   >
-                    Limpiar
+                    + Agregar
                   </button>
+                  {detectedItems.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setDetectedItems([])}
+                      className="text-[9px] font-bold text-red-600 hover:underline cursor-pointer"
+                    >
+                      Limpiar
+                    </button>
+                  )}
                 </div>
+              </div>
 
+              {detectedItems.length === 0 ? (
+                <p className="text-[10px] text-stone-400 italic text-center py-2">
+                  No hay ítems detectados. Usa la voz o añade uno manualmente.
+                </p>
+              ) : (
                 <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
                   {detectedItems.map((item, index) => (
                     <div 
                       key={index} 
                       className="flex items-center justify-between bg-white border-2 border-black p-2 rounded-xl text-xs font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] gap-1.5"
                     >
-                      {/* Cantidad Editable */}
                       <div className="flex items-center bg-amber-300 text-[10px] px-1 py-0.5 rounded-md border border-black font-black shrink-0">
                         <input
                           type="number"
-                          min="1"
+                          step="any"
+                          min="0.1"
                           value={item.quantity || 1}
                           onChange={(e) => handleUpdateRadarItem(index, 'quantity', e.target.value)}
-                          className="w-5 bg-transparent text-center focus:outline-none font-black"
+                          className="w-8 bg-transparent text-center focus:outline-none font-black"
                         />
                         <span>x</span>
                       </div>
 
-                      {/* Nombre del Producto Editable */}
                       <input
                         type="text"
-                        value={item.name || item.concept || ''}
+                        value={item.name || ''}
                         onChange={(e) => handleUpdateRadarItem(index, 'name', e.target.value)}
                         className="font-black uppercase bg-transparent text-black text-xs focus:outline-none flex-1 min-w-0 border-b border-dashed border-stone-300 px-1"
                         placeholder="Producto"
                       />
 
-                      {/* Precio Editable */}
                       <div className="flex items-center gap-0.5 shrink-0">
                         <span className="text-[10px] text-stone-500 font-black">$</span>
                         <input
                           type="number"
                           step="0.01"
-                          value={item.price ?? item.amount ?? 0}
+                          value={item.price ?? 0}
                           onChange={(e) => handleUpdateRadarItem(index, 'price', e.target.value)}
                           className="w-14 p-1 border border-black rounded-lg text-right font-black text-xs bg-amber-50 focus:outline-none"
                         />
-
-                        {/* Eliminar Ítem */}
                         <button
                           type="button"
                           onClick={() => handleRemoveRadarItem(index)}
                           className="text-stone-400 hover:text-red-500 font-black px-1 text-sm cursor-pointer ml-1"
-                          title="Quitar ítem"
                         >
                           ✕
                         </button>
@@ -605,11 +639,10 @@ export default function QuickActionGrid(props) {
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             <form onSubmit={saveTransaction} className="flex flex-col gap-3">
-              {/* CONCEPTO */}
               <div className="flex flex-col">
                 <label className="text-xs font-black uppercase mb-1 text-black">Concepto:</label>
                 <input
@@ -620,14 +653,13 @@ export default function QuickActionGrid(props) {
                 />
               </div>
 
-              {/* CATEGORÍA */}
               <div className="flex flex-col relative">
                 <div className="flex justify-between items-center mb-1">
                   <label className="text-xs font-black uppercase text-black">Categoría:</label>
                   <button
                     type="button"
                     onClick={() => setShowCategoryManager(true)}
-                    className="text-[9px] font-black uppercase bg-amber-300 border-2 border-black px-2 py-0.5 rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-amber-400 cursor-pointer text-black"
+                    className="text-[9px] font-black uppercase bg-amber-300 border-2 border-black px-2 py-0.5 rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer text-black"
                   >
                     🏷️ Crear / Editar
                   </button>
@@ -671,7 +703,6 @@ export default function QuickActionGrid(props) {
                 )}
               </div>
 
-              {/* FECHA RETROACTIVA */}
               <div className="flex flex-col gap-2 bg-white/60 border-2 border-black p-2.5 rounded-2xl shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
                 <div className="flex items-center gap-2">
                   <input
@@ -699,7 +730,6 @@ export default function QuickActionGrid(props) {
                 )}
               </div>
 
-              {/* MONTO */}
               <div className="flex flex-col">
                 <label className="text-xs font-black uppercase mb-1 text-black">Monto ($):</label>
                 <input
@@ -717,13 +747,13 @@ export default function QuickActionGrid(props) {
                 <button
                   type="button"
                   onClick={() => setTransOpen(false)}
-                  className="flex-1 bg-white border-4 border-black py-2 rounded-xl font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 cursor-pointer text-black text-xs"
+                  className="flex-1 bg-white border-4 border-black py-2 rounded-xl font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer text-black text-xs"
                 >
                   CANCELAR
                 </button>
                 <button
                   type="submit"
-                  className={`flex-1 ${type === 'expense' ? 'bg-red-500' : 'bg-green-500'} text-white border-4 border-black py-2 rounded-xl font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 cursor-pointer text-xs`}
+                  className={`flex-1 ${type === 'expense' ? 'bg-red-500' : 'bg-green-500'} text-white border-4 border-black py-2 rounded-xl font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer text-xs`}
                 >
                   GUARDAR
                 </button>
@@ -732,20 +762,6 @@ export default function QuickActionGrid(props) {
           </div>
         </div>
       )}
-
-      {/* MODAL GESTOR DE CATEGORÍAS */}
-      {showCategoryManager && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <CategoryManager
-            onClose={() => setShowCategoryManager(false)}
-            onCategoryUpdated={() => {
-              fetchCategories();
-              setShowCategoryManager(false);
-            }}
-          />
-        </div>
-      )}
-
     </div>
   );
 }
