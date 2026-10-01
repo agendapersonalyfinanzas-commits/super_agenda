@@ -1,5 +1,3 @@
-// src/services/aiParserService.jsx
-
 import { createWorker } from 'tesseract.js';
 import { obtenerPlantillaLocalYNube } from './templateService';
 
@@ -340,7 +338,6 @@ async function parseMexicanTicket(ocrText) {
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
 
-  // Resolver comercio y categoría canónica a partir de las primeras líneas del ticket
   const rawHeader = lines.slice(0, 5).join(' ');
   const canonicalResult = resolveCanonicalMerchant(rawHeader);
 
@@ -349,7 +346,6 @@ async function parseMexicanTicket(ocrText) {
   let totalAmount = 0;
   const items = [];
 
-  // Memoria Híbrida
   try {
     const savedTemplate = await obtenerPlantillaLocalYNube(concept);
     if (savedTemplate && savedTemplate.category) {
@@ -357,7 +353,6 @@ async function parseMexicanTicket(ocrText) {
     }
   } catch (e) {}
 
-  // 1. Extracción de Fecha
   let ticketDate = null;
   const MONTH_MAP = {
     'ENE': '01', 'FEB': '02', 'MAR': '03', 'ABR': '04', 'MAY': '05', 'JUN': '06',
@@ -381,7 +376,6 @@ async function parseMexicanTicket(ocrText) {
     }
   }
 
-  // 2. Extracción del Monto Total (Búsqueda estricta en línea TOTAL, ignorando SUBTOTAL)
   for (const line of lines) {
     if (/TOTAL/i.test(line) && !/SUBTOTAL/i.test(line)) {
       const matches = line.match(/([0-9,]+\.\d{2})/g);
@@ -399,7 +393,6 @@ async function parseMexicanTicket(ocrText) {
 
   let inItemsSection = true;
 
-  // 3. Extracción Estructural Segura de Ítems
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
@@ -452,18 +445,82 @@ async function parseMexicanTicket(ocrText) {
   };
 }
 
+/**
+ * Parser Inteligente de Lenguaje Natural y Voz Profesional
+ */
 export async function parseNaturalLanguageExpense(textInput) {
   if (!textInput || typeof textInput !== 'string') return null;
 
-  const amountMatch = textInput.match(/(?:\$|monto|monto de|gaste|gasté)?\s*(\d+(?:[\.,]\d{1,2})?)/i);
-  const amountNum = amountMatch ? parseFloat(amountMatch[1].replace(',', '.')) : 0;
+  const upperInput = textInput.toUpperCase();
+
+  // 1. Resolver el comercio y categoría automáticamente desde la voz
+  const canonicalResult = resolveCanonicalMerchant(upperInput);
+  let concept = canonicalResult.name !== 'COMPRA GENERAL' ? canonicalResult.name : 'GASTO POR VOZ';
+  let category = canonicalResult.category;
+
+  const items = [];
+  let explicitTotal = 0;
+
+  // 2. Detectar si hay un monto total explícito (ej. "gaste 150", "total 340")
+  const totalMatch = upperInput.match(/(?:TOTAL|GASTÉ|GASTE|FUREON|FUE)\s*(?:DE)?\s*(?:\$)?(\d+(?:[\.,]\d{1,2})?)/i) ||
+                     upperInput.match(/(?:SON)\s*(?:\$)?(\d+(?:[\.,]\d{1,2})?)/i);
+  if (totalMatch) {
+    explicitTotal = parseFloat(totalMatch[1].replace(',', '.'));
+  }
+
+  // 3. Segmentar por conectores naturales para extraer ítems y precios independientes
+  const segments = textInput.split(/,|\s+y\s+|\s+con\s+|;/i);
+
+  for (const segment of segments) {
+    const priceMatch = segment.match(/(\d+(?:[\.,]\d{1,2})?)/g);
+    if (priceMatch) {
+      const priceVal = parseFloat(priceMatch[priceMatch.length - 1].replace(',', '.'));
+      let itemName = segment
+        .replace(priceMatch[priceMatch.length - 1], '')
+        .replace(/(?:\$|monto|pesos|pesotes|de|en|gaste|gasté|total|fue|fueron)/gi, '')
+        .replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      if (itemName.length >= 2 && priceVal > 0 && priceVal < 50000) {
+        const upperItemName = itemName.toUpperCase();
+        if (!items.some(i => i.name === upperItemName)) {
+          items.push({
+            name: upperItemName,
+            price: priceVal
+          });
+        }
+      }
+    }
+  }
+
+  // 4. Calcular la suma total de los ítems o respaldar con el total explícito
+  let totalAmount = 0;
+  if (items.length > 0) {
+    totalAmount = items.reduce((sum, item) => sum + item.price, 0);
+  }
+
+  if (explicitTotal > 0 && (items.length === 0 || explicitTotal >= totalAmount)) {
+    totalAmount = explicitTotal;
+  } else if (totalAmount === 0) {
+    const anyNumber = textInput.match(/(\d+(?:[\.,]\d{1,2})?)/g);
+    if (anyNumber && anyNumber.length > 0) {
+      totalAmount = parseFloat(anyNumber[anyNumber.length - 1].replace(',', '.'));
+    }
+  }
+
+  // Si no se detectó comercio pero hay un ítem claro, usar el ítem como concepto
+  if (concept === 'GASTO POR VOZ' && items.length > 0) {
+    concept = items[0].name;
+  }
 
   return {
-    concept: textInput.trim().toUpperCase() || 'GASTO REGISTRADO',
-    amount: amountNum,
-    category: 'OTROS',
+    concept: concept.toUpperCase(),
+    amount: Number(totalAmount.toFixed(2)) || 0,
+    category: category,
     description: textInput,
+    items: items, // <--- Lista estructurada lista para mostrarse y corregirse antes de guardar
     date: new Date().toISOString().split('T')[0],
-    items: []
+    engine: 'VOICE_EXPERT_STRUCTURED_V2'
   };
 }
