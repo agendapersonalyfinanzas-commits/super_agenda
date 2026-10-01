@@ -5,7 +5,7 @@ export const isSpeechSupported = () => {
 };
 
 /**
- * Servicio de voz optimizado: sin duplicación de palabras y con auto-restart resiliente.
+ * Servicio de voz Senior Master: Auto-resiliente, continuo y sin duplicación de palabras.
  */
 export const createSpeechListener = ({ onStart, onResult, onError, onEnd }) => {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -17,29 +17,43 @@ export const createSpeechListener = ({ onStart, onResult, onError, onEnd }) => {
 
   let recognition = null;
   let isManuallyStopped = false;
+  let persistentTranscript = ''; // Almacena el texto definitivo acumulado entre reinicios
 
-  const createRecognitionInstance = () => {
+  const createInstance = () => {
     const rec = new SpeechRecognition();
     rec.lang = 'es-MX';
     rec.continuous = true;
     rec.interimResults = true;
 
     rec.onstart = () => {
-      if (onStart) onStart();
+      if (onStart && !persistentTranscript) {
+        onStart();
+      }
     };
 
     rec.onresult = (event) => {
-      let fullTranscript = '';
-      
-      // 🛡️ Solución Senior: Recorremos desde el índice 0 para reconstruir 
-      // la frase completa sin duplicar fragmentos intermedios o finales.
-      for (let i = 0; i < event.results.length; ++i) {
-        fullTranscript += event.results[i][0].transcript + ' ';
+      let currentInterim = '';
+      let currentFinal = '';
+
+      // Procesamos únicamente los resultados nuevos desde event.resultIndex
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        const transcriptPiece = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          currentFinal += transcriptPiece + ' ';
+        } else {
+          currentInterim += transcriptPiece;
+        }
       }
 
-      const cleanText = fullTranscript.replace(/\s+/g, ' ').trim();
+      // Si hay texto final nuevo, lo consolidamos de forma permanente
+      if (currentFinal) {
+        persistentTranscript += currentFinal;
+      }
+
+      // El texto total combina lo permanente + lo que se está dictando en tiempo real
+      const fullText = (persistentTranscript + currentInterim).trim();
       if (onResult) {
-        onResult(cleanText);
+        onResult(fullText);
       }
     };
 
@@ -52,14 +66,13 @@ export const createSpeechListener = ({ onStart, onResult, onError, onEnd }) => {
     };
 
     rec.onend = () => {
-      // 🔄 Auto-restart transparente si el navegador corta por silencio
+      // Auto-reiniciado silencioso en segundo plano si el usuario no ha detenido el micro
       if (!isManuallyStopped) {
-        console.log('[Speech Service] Reiniciando escucha de forma invisible...');
         try {
-          recognition = createRecognitionInstance();
+          recognition = createInstance();
           recognition.start();
         } catch (e) {
-          console.warn('[Speech Service] No se pudo reiniciar:', e);
+          console.warn('[Speech Service] No se pudo reiniciar automáticamente:', e);
         }
       } else {
         if (onEnd) onEnd();
@@ -69,14 +82,15 @@ export const createSpeechListener = ({ onStart, onResult, onError, onEnd }) => {
     return rec;
   };
 
-  recognition = createRecognitionInstance();
+  recognition = createInstance();
 
   return {
     start: () => {
+      isManuallyStopped = false;
+      persistentTranscript = '';
       try {
-        isManuallyStopped = false;
         recognition.start();
-        console.log('[Speech Service] Micrófono iniciado.');
+        console.log('[Speech Service] Micrófono iniciado sin eco.');
       } catch (e) {
         console.error('[Speech Service] Error al iniciar:', e);
       }
@@ -85,7 +99,7 @@ export const createSpeechListener = ({ onStart, onResult, onError, onEnd }) => {
       isManuallyStopped = true;
       try {
         recognition.stop();
-        console.log('[Speech Service] Micrófono detenido manualmente.');
+        console.log('[Speech Service] Micrófono detenido.');
       } catch (e) {
         console.error('[Speech Service] Error al detener:', e);
       }
