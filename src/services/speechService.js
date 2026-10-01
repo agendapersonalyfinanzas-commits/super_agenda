@@ -1,53 +1,89 @@
 // src/services/speechService.js
 
-/**
- * Inicializa y configura el reconocedor de voz nativo del navegador.
- * @param {Object} callbacks Objeto con handlers: onResult, onError, onEnd, onStart
- * @returns {Object} Instancia de SpeechRecognition o null si no es compatible
- */
-export const createSpeechListener = ({ onResult, onError, onEnd, onStart }) => {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+export const isSpeechSupported = () => {
+  return typeof window !== 'undefined' && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
+};
 
+/**
+ * Crea un listener de voz robusto y continuo para evitar cortes abruptos ante pausas breves.
+ */
+export const createSpeechListener = ({ onStart, onResult, onError, onEnd }) => {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  
   if (!SpeechRecognition) {
-    if (onError) {
-      onError('El navegador no soporta la API de reconocimiento de voz nativa.');
-    }
+    console.warn('[Speech Service] El navegador no soporta reconocimiento de voz.');
     return null;
   }
 
   const recognition = new SpeechRecognition();
   
-  // Configuración para captura precisa en español
-  recognition.continuous = false; // Se detiene automáticamente al terminar de hablar
-  recognition.interimResults = false; // Solo devuelve el resultado final pulido
-  recognition.lang = 'es-MX'; // Optimizado para español de México / Latinoamérica
+  // ⚙️ Configuraciones Senior Master para fluidez
+  recognition.lang = 'es-MX'; // Idioma español (puedes cambiarlo a 'es-ES' si prefiero España)
+  recognition.continuous = true; // 👈 Mantiene el micrófono abierto aunque hagas pausas
+  recognition.interimResults = true; // 👈 Muestra texto en tiempo real mientras hablas
+
+  let finalTranscript = '';
+  let isManuallyStopped = false;
 
   recognition.onstart = () => {
+    finalTranscript = '';
+    isManuallyStopped = false;
     if (onStart) onStart();
   };
 
   recognition.onresult = (event) => {
-    if (event.results && event.results[0] && event.results[0][0]) {
-      const transcript = event.results[0][0].transcript;
-      if (onResult) onResult(transcript);
+    let interimTranscript = '';
+    
+    for (let i = event.resultIndex; i < event.results.length; ++i) {
+      const transcriptPiece = event.results[i][0].transcript;
+      if (event.results[i].isFinal) {
+        finalTranscript += transcriptPiece + ' ';
+      } else {
+        interimTranscript += transcriptPiece;
+      }
+    }
+
+    // Combinamos lo que ya se confirmó con lo que se está dictando en tiempo real
+    const currentFullText = (finalTranscript + interimTranscript).trim();
+    if (onResult) {
+      onResult(currentFullText);
     }
   };
 
   recognition.onerror = (event) => {
-    console.error('Error en reconocimiento de voz:', event.error);
+    // Ignoramos el error 'no-speech' común si el usuario solo tarda en empezar a hablar
+    if (event.error === 'no-speech') return;
+    console.error('[Speech Service] Error de reconocimiento:', event.error);
     if (onError) onError(event.error);
   };
 
   recognition.onend = () => {
-    if (onEnd) onEnd();
+    // Si el navegador lo cierra solo pero no fue una parada manual, 
+    // podemos decidir si mantener el estado final
+    if (onEnd && !isManuallyStopped) {
+      onEnd();
+    }
   };
 
-  return recognition;
-};
-
-/**
- * Verifica si el navegador actual soporta entrada por voz.
- */
-export const isSpeechSupported = () => {
-  return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+  return {
+    start: () => {
+      try {
+        isManuallyStopped = false;
+        recognition.start();
+        console.log('[Speech Service] Micrófono iniciado en modo continuo.');
+      } catch (e) {
+        console.error('[Speech Service] No se pudo iniciar:', e);
+      }
+    },
+    stop: () => {
+      try {
+        isManuallyStopped = true;
+        recognition.stop();
+        console.log('[Speech Service] Micrófono detenido manualmente.');
+        if (onEnd) onEnd();
+      } catch (e) {
+        console.error('[Speech Service] Error al detener:', e);
+      }
+    }
+  };
 };
