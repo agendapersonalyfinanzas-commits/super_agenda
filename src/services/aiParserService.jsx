@@ -5,6 +5,50 @@ import { obtenerPlantillaLocalYNube } from './templateService';
 
 let workerInstance = null;
 
+/**
+ * 🏢 Diccionario Canónico Integrado para México (Tolerancia a erratas de OCR)
+ */
+const CANONICAL_MERCHANTS = [
+  {
+    canonical: 'CHEDRAUI',
+    category: 'SUPERMERCADO',
+    aliases: ['CHEDRAUI', 'CHEDRAHUI', 'CHEDRAUT', 'CHEDRAU', 'TIENDAS CHEDRAUI']
+  },
+  {
+    canonical: 'WALMART',
+    category: 'SUPERMERCADO',
+    aliases: ['WALMART', 'WAL MART', 'BODEGA AURRERA', 'AURRERA']
+  },
+  {
+    canonical: 'FARMACIAS POZA RICA',
+    category: 'SALUD',
+    aliases: ['FARMACIAS POZA RICA', 'FARMACIA POZA RICA', 'FARMACIAS GUADALAJARA', 'FARMACIAS SIMILARES', 'FARMACIAS']
+  },
+  {
+    canonical: 'OXXO',
+    category: 'ALIMENTOS',
+    aliases: ['OXXO', 'CADENA COMERCIAL OXXO']
+  }
+];
+
+function resolveCanonicalMerchant(rawOcrText) {
+  if (!rawOcrText) return { name: 'COMPRA GENERAL', category: 'OTROS' };
+  const upperText = rawOcrText.toUpperCase();
+
+  for (const merchant of CANONICAL_MERCHANTS) {
+    for (const alias of merchant.aliases) {
+      if (upperText.includes(alias)) {
+        return { name: merchant.canonical, category: merchant.category };
+      }
+    }
+  }
+
+  let cleanName = upperText.split(',')[0].replace(/S\.?A\.? DE C\.?V\.?|R\.?F\.?C\.?/g, '').trim();
+  if (cleanName.length > 30) cleanName = cleanName.substring(0, 30);
+
+  return { name: cleanName || 'COMPRA GENERAL', category: 'OTROS' };
+}
+
 async function initWorker(onProgress) {
   if (workerInstance) return workerInstance;
   try {
@@ -111,39 +155,20 @@ async function parseMexicanTicket(ocrText) {
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
 
-  let concept = 'CHEDRAUI';
+  // Resolver comercio y categoría canónica a partir de las primeras líneas del ticket
+  const rawHeader = lines.slice(0, 4).join(' ');
+  const canonicalResult = resolveCanonicalMerchant(rawHeader);
+
+  let concept = canonicalResult.name;
+  let category = canonicalResult.category;
   let totalAmount = 0;
-  let category = 'SUPERMERCADO';
   const items = [];
 
-  const STORE_DICTIONARY = [
-    { pattern: /CHEDRAU/i, name: 'CHEDRAUI', cat: 'SUPERMERCADO' },
-    { pattern: /SAMS\s*CLUB|SAM'S/i, name: 'SAM\'S CLUB', cat: 'SUPERMERCADO' },
-    { pattern: /COSTCO/i, name: 'COSTCO WHOLESALE', cat: 'SUPERMERCADO' },
-    { pattern: /WALMART/i, name: 'WALMART', cat: 'SUPERMERCADO' },
-    { pattern: /BODEGA\s*AURRERA/i, name: 'BODEGA AURRERÁ', cat: 'SUPERMERCADO' },
-    { pattern: /SORIANA/i, name: 'SORIANA', cat: 'SUPERMERCADO' },
-    { pattern: /OXXO/i, name: 'OXXO', cat: 'ALIMENTOS' },
-    { pattern: /FARMACIA|GUADALAJARA|SIMILARES|POZA\s*RICA/i, name: 'FARMACIA', cat: 'SALUD' }
-  ];
-
-  for (const line of lines) {
-    for (const store of STORE_DICTIONARY) {
-      if (store.pattern.test(line)) {
-        concept = store.name;
-        category = store.cat;
-        break;
-      }
-    }
-    if (concept !== 'CHEDRAUI') break;
-  }
-
   // Memoria Híbrida
-  let learnedTemplate = null;
   try {
-    learnedTemplate = await obtenerPlantillaLocalYNube(concept);
-    if (learnedTemplate && learnedTemplate.category) {
-      category = learnedTemplate.category;
+    const savedTemplate = await obtenerPlantillaLocalYNube(concept);
+    if (savedTemplate && savedTemplate.category) {
+      category = savedTemplate.category;
     }
   } catch (e) {}
 
@@ -243,7 +268,7 @@ async function parseMexicanTicket(ocrText) {
     description: `Ticket escaneado de ${concept}`,
     items: items,
     date: ticketDate || new Date().toISOString().split('T')[0],
-    engine: 'MOBILE_EXPERT_TRAINED_V2'
+    engine: 'MOBILE_EXPERT_CANONICAL_V3'
   };
 }
 
