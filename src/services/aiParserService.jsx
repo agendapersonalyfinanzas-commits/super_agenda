@@ -109,7 +109,7 @@ export async function parseExpenseInput(inputData, onProgress) {
 }
 
 /**
- * Parser Maestro Estructural para Tickets en México (Afinado para Chedraui: Columnas, Canela y Residuos de Peso)
+ * Parser Maestro Estructural para Tickets en México (Con Prioridad de Marca y Anti-Ubicación)
  */
 async function parseMexicanTicket(ocrText) {
   const lines = ocrText
@@ -117,11 +117,30 @@ async function parseMexicanTicket(ocrText) {
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
 
-  const rawHeader = lines.slice(0, 5).join(' ');
-  const canonicalResult = resolveCanonicalMerchant(rawHeader);
+  const rawHeader = lines.slice(0, 8).join(' ').toUpperCase();
 
-  let concept = canonicalResult.name;
-  let category = canonicalResult.category;
+  let concept = 'ESTABLECIMIENTO DESCONOCIDO';
+  let category = 'SUPERMERCADO';
+
+  // REGLA DE PRIORIDAD: Forzar marcas principales detectadas en el encabezado para evitar confusiones con ubicaciones
+  if (/CHEDRAU|CHEDR/i.test(rawHeader)) {
+    concept = 'CHEDRAUI';
+    category = 'SUPERMERCADO';
+  } else if (/WALMART|BODEGA/i.test(rawHeader)) {
+    concept = 'WALMART';
+    category = 'SUPERMERCADO';
+  } else if (/OXXO/i.test(rawHeader)) {
+    concept = 'OXXO';
+    category = 'ALIMENTOS';
+  } else if (/SORIANA/i.test(rawHeader)) {
+    concept = 'SORIANA';
+    category = 'SUPERMERCADO';
+  } else {
+    const canonicalResult = resolveCanonicalMerchant(rawHeader);
+    concept = canonicalResult.name;
+    category = canonicalResult.category;
+  }
+
   let totalAmount = 0;
   const items = [];
 
@@ -176,7 +195,7 @@ async function parseMexicanTicket(ocrText) {
     }
   }
 
-  const IGNORE_PATTERNS = /TIENDAS|OXXO|WALMART|BODEGA|OFFICE|PEMEX|SAMS|COSTCO|SORIANA|ARTELI|HOME|LIVERPOOL|S\.?A\.?|C\.?V\.?|R\.?F\.?C\.?|SUC|BLVD|AV\.|CANT|ARTICULO|PRECIC|SUBTOTAL|TOTAL|AFILIACION|TARJETA|CAMBIO|AUT#|PROSA|SALDO|REBAJADO|AHORRO|IVA|IEPS|ATENDIO|OPINION|REDONDEO|REGIMEN|AVISO|PAGO|EFECTIVO|MENSAJE|GRACIAS|TASA|IMPORTE|CLIENTE|CAJERO|CODIGO|DEVOLUCIONES|PREFERENCIA|DEBITO|ARQC|AID|DSC|DESCUENTO|FARMACIA|SALCHICHONERIA|LACTEOS|PANIFICADORA|ALIMENTOS|REFIGERADOS|EMPACADA|DEPARTAMENTO/i;
+  const IGNORE_PATTERNS = /TIENDAS|OXXO|WALMART|BODEGA|OFFICE|PEMEX|SAMS|COSTCO|SORIANA|ARTELI|HOME|LIVERPOOL|S\.?A\.?|C\.?V\.?|R\.?F\.?C\.?|SUC|BLVD|AV\.|CANT|ARTICULO|PRECIC|SUBTOTAL|TOTAL|AFILIACION|TARJETA|CAMBIO|AUT#|PROSA|SALDO|REBAJADO|AHORRO|IVA|IEPS|ATENDIO|OPINION|REDONDEO|REGIMEN|AVISO|PAGO|EFECTIVO|MENSAJE|GRACIAS|TASA|IMPORTE|CLIENTE|CAJERO|CODIGO|DEVOLUCIONES|PREFERENCIA|DEBITO|ARQC|AID|DSC|DESCUENTO|FARMACIA|SALCHICHONERIA|LACTEOS|PANIFICADORA|ALIMENTOS|REFIGERADOS|EMPACADA|DEPARTAMENTO|TUXPAN/i;
 
   let inItemsSection = true;
 
@@ -207,7 +226,7 @@ async function parseMexicanTicket(ocrText) {
       for (const p of priceMatches) {
         cleanedName = cleanedName.replace(p, '');
       }
-      // Remover el bloque numérico de cantidad inicial para que no deje basura (como "445" o "1")
+      // Remover el bloque numérico de cantidad inicial para que no deje basura
       if (qtyMatch) {
         cleanedName = cleanedName.replace(qtyMatch[0], '');
       }
@@ -240,6 +259,6 @@ async function parseMexicanTicket(ocrText) {
     description: `Ticket escaneado de ${concept}`,
     items: items,
     date: ticketDate || new Date().toISOString().split('T')[0],
-    engine: 'MOBILE_EXPERT_CHEDRAUI_FIXED_V6'
+    engine: 'MOBILE_EXPERT_CHEDRAUI_MERCHANT_FIX_V7'
   };
 }
