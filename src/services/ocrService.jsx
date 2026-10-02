@@ -69,7 +69,7 @@ export const scanTicketOCR = async (file) => {
     6. "warranty": texto descriptivo de la garantía si aplica (ej: "1 AÑO"), de lo contrario null.
     7. "isBillOrInvoice": booleano (true si es recibo de servicios con fecha límite futura, false si es ticket normal).
     8. "description": resumen breve del ticket o servicio.
-    9. "items": un arreglo (array) con los productos detectados. Cada objeto debe tener "name" (nombre del producto en mayúsculas) y "price" (número flotante con el precio unitario o total del artículo). Si no hay desglose, pon [].
+    9. "items": un arreglo (array) con los productos detectados. Cada objeto debe tener "name" (nombre del producto en mayúsculas), "quantity" (número entero o decimal con la cantidad o peso, ej: 1 o 0.510) y "price" (número flotante con el precio total del artículo). Si no hay desglose, pon [].
     
     Ejemplo de formato requerido:
     {
@@ -82,18 +82,17 @@ export const scanTicketOCR = async (file) => {
       "isBillOrInvoice": false,
       "description": "Compra de despensa",
       "items": [
-        {"name": "LECHE ENTERA 1L", "price": 28.50},
-        {"name": "CAFÉ SOLUBLE", "price": 145.00}
+        {"name": "LECHE ENTERA 1L", "quantity": 1, "price": 28.50},
+        {"name": "PAPA CAMBRAY", "quantity": 0.510, "price": 22.00}
       ]
     }
   `;
 
-  // Reducimos a 1 solo intento controlado para no rebasar los límites por minuto de la API gratuita
   try {
-    console.log('Escaneando ticket con gemini-3.8-flash...');
+    console.log('Escaneando ticket con gemini-2.5-flash...');
     
     const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
+      model: 'gemini-2.5-flash',
       contents: [
         prompt,
         {
@@ -115,6 +114,20 @@ export const scanTicketOCR = async (file) => {
 
     const parsedData = JSON.parse(jsonMatch[0]);
 
+    // Mapeo estructurado y seguro de los items con soporte para cantidades fraccionadas
+    const formattedItems = Array.isArray(parsedData.items) 
+      ? parsedData.items.map(item => {
+          const qty = Number(item.quantity) || 1;
+          const prc = Number(item.price) || 0;
+          return {
+            name: item.name ? String(item.name).toUpperCase() : 'PRODUCTO',
+            quantity: qty,
+            price: prc,
+            subtotal: Number((qty * prc).toFixed(2))
+          };
+        }) 
+      : [];
+
     return {
       amount: Number(parsedData.amount) || 0,
       concept: parsedData.concept ? String(parsedData.concept).toUpperCase() : 'COMPRA CON TICKET',
@@ -124,12 +137,12 @@ export const scanTicketOCR = async (file) => {
       warranty: parsedData.warranty || null,
       isBillOrInvoice: Boolean(parsedData.isBillOrInvoice),
       description: parsedData.description || '',
-      items: Array.isArray(parsedData.items) ? parsedData.items : [],
+      items: formattedItems,
       rawText: textResponse
     };
 
   } catch (error) {
-    console.error('Error al procesar el ticket:', error);
+    console.error('Error al procesar el ticket con IA:', error);
     
     if (error?.message?.includes('429') || error?.message?.includes('quota')) {
       throw new Error('Límite de solicitudes excedido (Error 429). Espera unos 30 segundos antes de volver a escanear otro ticket para respetar la cuota gratuita.');

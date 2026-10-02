@@ -109,7 +109,7 @@ export async function parseExpenseInput(inputData, onProgress) {
 }
 
 /**
- * Parser Maestro Estructural para Tickets en México
+ * Parser Maestro Estructural para Tickets en México (Actualizado y Corregido)
  */
 async function parseMexicanTicket(ocrText) {
   const lines = ocrText
@@ -133,12 +133,14 @@ async function parseMexicanTicket(ocrText) {
   } catch (e) {}
 
   let ticketDate = null;
+  const currentYear = new Date().getFullYear(); // Año actual dinámico (ej. 2026)
   const MONTH_MAP = {
     'ENE': '01', 'FEB': '02', 'MAR': '03', 'ABR': '04', 'MAY': '05', 'JUN': '06',
     'JUL': '07', 'AGO': '08', 'SEP': '09', 'OCT': '10', 'NOV': '11', 'DIC': '12',
     'JAN': '01', 'APR': '04', 'AUG': '08', 'DEC': '12'
   };
 
+  // Validación de Fecha Lógica (Anti-Futuro)
   for (const line of lines) {
     const dateMatch = line.match(/(\d{1,2})\s*[\/\-\.]\s*([A-Z]{3,4}\.?|\d{1,2})\s*[\/\-\.]?\s*(\d{2,4})/i);
     if (dateMatch) {
@@ -146,6 +148,12 @@ async function parseMexicanTicket(ocrText) {
       let monthRaw = dateMatch[2].toUpperCase().replace(/\./g, '');
       let year = dateMatch[3];
       if (year.length === 2) year = '20' + year;
+
+      let parsedYear = parseInt(year, 10);
+      if (parsedYear > currentYear) {
+        console.warn(`⚠️ Alerta OCR: Año futurista detectado (${parsedYear}). Ajustando al año actual.`);
+        year = currentYear.toString();
+      }
 
       let month = MONTH_MAP[monthRaw] || monthRaw.padStart(2, '0');
       if (parseInt(month) >= 1 && parseInt(month) <= 12 && parseInt(day) >= 1 && parseInt(day) <= 31) {
@@ -187,21 +195,27 @@ async function parseMexicanTicket(ocrText) {
     const priceMatches = line.match(/([0-9,]+\.\d{2})/g);
 
     if (priceMatches && priceMatches.length > 0) {
+      // El total de la línea es la última cifra de la derecha
       const lineTotal = parseFloat(priceMatches[priceMatches.length - 1].replace(',', ''));
+
+      // Captura correcta de cantidades con decimales (ej: 0.510, 1.000) o enteros
+      const qtyMatch = line.match(/^(\d+\.\d{3}|\d+\.\d+|\d+)/);
+      const quantity = qtyMatch ? parseFloat(qtyMatch[1]) : 1;
 
       let cleanedName = line;
       for (const p of priceMatches) {
         cleanedName = cleanedName.replace(p, '');
       }
-      cleanedName = cleanedName.replace(/^\s*\d+[.,]\d+\s*/, '');
+      cleanedName = cleanedName.replace(/^\s*(\d+\.\d{3}|\d+\.\d+|\d+)\s*/, '');
       cleanedName = cleanedName.replace(/\s+[A-Z]\s*$/, '');
-      cleanedName = cleanedName.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+      cleanedName = cleanedName.replace(/[^a-zA-ZáéíóúÁÉÍÓÚÑñ0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
 
       if (cleanedName.length >= 3 && !IGNORE_PATTERNS.test(cleanedName) && lineTotal > 0 && lineTotal < 1500) {
         const upperName = cleanedName.toUpperCase();
         if (!items.some(item => item.name === upperName)) {
           items.push({
             name: upperName,
+            quantity: quantity,
             price: lineTotal
           });
         }
@@ -220,6 +234,6 @@ async function parseMexicanTicket(ocrText) {
     description: `Ticket escaneado de ${concept}`,
     items: items,
     date: ticketDate || new Date().toISOString().split('T')[0],
-    engine: 'MOBILE_EXPERT_MEGA_CANONICAL_V4'
+    engine: 'MOBILE_EXPERT_MEGA_CANONICAL_V4_FIXED'
   };
 }

@@ -1,5 +1,3 @@
-// src/components/Expenses/DashboardHeader.jsx
-
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
 
@@ -31,6 +29,7 @@ export default function DashboardHeader({
     hour12: true
   });
 
+  // Encontrar el nombre completo del usuario auditado actual
   const getAuditedUserFullName = () => {
     if (!selectedAuditedUser) return null;
     const found = usersList.find(u => u.id === selectedAuditedUser);
@@ -41,10 +40,12 @@ export default function DashboardHeader({
   };
 
   const auditedName = getAuditedUserFullName();
+
+  // 🌟 Determinamos el nombre del saludo priorizando al usuario auditado o la prop recibida
   const displayName = auditedName || user_name || activeUser || 'USUARIO';
 
   return (
-    <div className="bg-[#FBBF24] border-4 border-black rounded-3xl p-3 sm:p-4 shadow-[6px_6px_0px_rgba(0,0,0,1)] flex flex-col gap-3 select-none w-full font-mono">
+    <div className="bg-[#FBBF24] border-4 border-black rounded-3xl p-3 sm:p-4 shadow-[6px_6px_0px_rgba(0,0,0,1)] flex flex-col gap-3 select-none w-full">
       
       {/* 🌟 BANNER SUPERIOR DE BIENVENIDA DINÁMICO */}
       <div className="w-full bg-white border-[3px] border-black rounded-2xl py-2 px-4 shadow-[4px_4px_0px_rgba(0,0,0,1)] text-center">
@@ -53,25 +54,48 @@ export default function DashboardHeader({
         </h1>
       </div>
 
+      {/* Estilos con vuelo frontal, giro suave y destellos de rayos solares */}
       <style>{`
         @keyframes woodstockErraticFlight {
-          0% { transform: translate(0px, 15px) scale(0.9) rotate(0deg); }
-          25% { transform: translate(32vw, -25px) scale(1.3) rotate(4deg); }
-          48% { transform: translate(68vw, 10px) scale(0.5) rotate(-4deg); }
-          50% { transform: translate(72vw, 15px) scale(0.55) rotate(0deg); }
-          75% { transform: translate(35vw, -20px) scale(1.2) rotate(-4deg); }
-          95% { transform: translate(8vw, 15px) scale(1.0) rotate(4deg); }
-          100% { transform: translate(0px, 15px) scale(0.9) rotate(0deg); }
+          0% {
+            transform: translate(0px, 15px) scale(0.9) rotate(0deg);
+          }
+          25% {
+            transform: translate(32vw, -25px) scale(1.3) rotate(4deg);
+          }
+          48% {
+            transform: translate(68vw, 10px) scale(0.5) rotate(-4deg);
+          }
+          50% {
+            transform: translate(72vw, 15px) scale(0.55) rotate(0deg);
+          }
+          75% {
+            transform: translate(35vw, -20px) scale(1.2) rotate(-4deg);
+          }
+          95% {
+            transform: translate(8vw, 15px) scale(1.0) rotate(4deg);
+          }
+          100% {
+            transform: translate(0px, 15px) scale(0.9) rotate(0deg);
+          }
         }
         .woodstock-erratic-animation {
           animation: woodstockErraticFlight 14s ease-in-out infinite;
         }
 
         @keyframes woodstockFlip {
-          0%, 46% { transform: scaleX(1); }
-          50% { transform: scaleX(0); }
-          54%, 96% { transform: scaleX(-1); }
-          100% { transform: scaleX(1); }
+          0%, 46% { 
+            transform: scaleX(1); 
+          }
+          50% { 
+            transform: scaleX(0); 
+          }
+          54%, 96% { 
+            transform: scaleX(-1); 
+          }
+          100% { 
+            transform: scaleX(1); 
+          }
         }
         .woodstock-img-flip {
           animation: woodstockFlip 14s ease-in-out infinite;
@@ -169,15 +193,17 @@ export default function DashboardHeader({
           </div>
         )}
 
-        {/* 📸 BOTÓN CLÁSICO: ESCANEAR TICKET */}
-        <button 
-          type="button"
-          onClick={onOcrOpen}
-          className="w-full bg-white hover:bg-gray-100 text-black border-[3px] border-black rounded-2xl py-2.5 px-3 font-black text-xs uppercase text-center shadow-[4px_4px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all cursor-pointer flex items-center justify-center gap-2"
-        >
-          <span className="text-base">📸</span>
-          Escanear Ticket
-        </button>
+        {/* BOTÓN ESCANEAR TICKET */}
+        <div className="flex justify-start w-full">
+          <button 
+            type="button"
+            onClick={onOcrOpen}
+            className="bg-white border-[3px] border-black rounded-2xl py-2 px-4 font-black text-black shadow-[4px_4px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all flex items-center gap-2 text-xs sm:text-sm uppercase cursor-pointer"
+          >
+            <span className="text-base">📸</span>
+            ESCANEAR TICKET
+          </button>
+        </div>
 
         {/* CONTENEDOR DE FECHA Y RELOJ */}
         <div className="w-full bg-transparent py-1 px-1 flex items-center justify-between">
