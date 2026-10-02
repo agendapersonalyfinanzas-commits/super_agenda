@@ -89,12 +89,11 @@ export async function parseExpenseInput(inputData, onProgress) {
         return await parseMexicanTicket(text);
       }
     } else if (typeof inputData === 'string') {
-      // Importación dinámica local o usando la función re-exportada
       const { parseNaturalLanguageExpense } = await import('./naturalLanguageParser');
       return parseNaturalLanguageExpense(inputData);
     }
   } catch (err) {
-    console.warn('⚠ Error en parseExpenseInput:', err);
+    console.warn('⚠ Error in parseExpenseInput:', err);
   }
 
   return {
@@ -109,7 +108,7 @@ export async function parseExpenseInput(inputData, onProgress) {
 }
 
 /**
- * Parser Maestro Estructural para Tickets en México (Con Prioridad de Marca y Anti-Ubicación)
+ * Parser Maestro Estructural para Tickets en México (Afinado v9: Aislamiento estricto de cantidad y precios)
  */
 async function parseMexicanTicket(ocrText) {
   const lines = ocrText
@@ -122,7 +121,6 @@ async function parseMexicanTicket(ocrText) {
   let concept = 'ESTABLECIMIENTO DESCONOCIDO';
   let category = 'SUPERMERCADO';
 
-  // REGLA DE PRIORIDAD: Forzar marcas principales detectadas en el encabezado para evitar confusiones con ubicaciones
   if (/CHEDRAU|CHEDR/i.test(rawHeader)) {
     concept = 'CHEDRAUI';
     category = 'SUPERMERCADO';
@@ -152,14 +150,13 @@ async function parseMexicanTicket(ocrText) {
   } catch (e) {}
 
   let ticketDate = null;
-  const currentYear = new Date().getFullYear(); // Año actual dinámico (ej. 2026)
+  const currentYear = new Date().getFullYear();
   const MONTH_MAP = {
     'ENE': '01', 'FEB': '02', 'MAR': '03', 'ABR': '04', 'MAY': '05', 'JUN': '06',
     'JUL': '07', 'AGO': '08', 'SEP': '09', 'OCT': '10', 'NOV': '11', 'DIC': '12',
     'JAN': '01', 'APR': '04', 'AUG': '08', 'DEC': '12'
   };
 
-  // Validación de Fecha Lógica (Anti-Futuro)
   for (const line of lines) {
     const dateMatch = line.match(/(\d{1,2})\s*[\/\-\.]\s*([A-Z]{3,4}\.?|\d{1,2})\s*[\/\-\.]?\s*(\d{2,4})/i);
     if (dateMatch) {
@@ -170,7 +167,6 @@ async function parseMexicanTicket(ocrText) {
 
       let parsedYear = parseInt(year, 10);
       if (parsedYear > currentYear) {
-        console.warn(`⚠️ Alerta OCR: Año futurista detectado (${parsedYear}). Ajustando al año actual.`);
         year = currentYear.toString();
       }
 
@@ -184,10 +180,10 @@ async function parseMexicanTicket(ocrText) {
 
   for (const line of lines) {
     if (/TOTAL/i.test(line) && !/SUBTOTAL/i.test(line)) {
-      const matches = line.match(/([0-9,]+\.\d{2})/g);
+      const matches = line.match(/([0-9]{1,4}[.,]\d{2})/g);
       if (matches && matches.length > 0) {
         const val = parseFloat(matches[matches.length - 1].replace(',', ''));
-        if (val > 0) {
+        if (val > 0 && val < 50000) {
           totalAmount = val;
           break;
         }
@@ -211,26 +207,26 @@ async function parseMexicanTicket(ocrText) {
       continue;
     }
 
-    const priceMatches = line.match(/([0-9,]+\.\d{2})/g);
+    // 1. EXTRAER CANTIDAD AL INICIO DEL RENGLÓN (Ej: 1.000, 0.270, 2)
+    const qtyMatch = line.match(/^([0-9]+[.,]\d{1,3}|[0-9]+)\s+/);
+    const quantity = qtyMatch ? parseFloat(qtyMatch[1].replace(',', '.')) : 1;
+
+    // 2. AISLAR EL RESTO DEL TEXTO (QUITANDO LA CANTIDAD PARA QUE SUS DECIMALES NO INTERFIERAN)
+    const textWithoutQty = qtyMatch ? line.substring(qtyMatch[0].length) : line;
+
+    // 3. BUSCAR PRECIOS EXCLUSIVAMENTE EN EL TEXTO RESTANTE
+    const priceMatches = textWithoutQty.match(/([0-9]{1,4}[.,]\d{2})/g);
 
     if (priceMatches && priceMatches.length > 0) {
-      // REGLA DE ORO: El precio total de la línea es estrictamente la ÚLTIMA cifra monetaria de la extrema derecha
+      // El precio final es estrictamente el último valor de la derecha
       const lineTotal = parseFloat(priceMatches[priceMatches.length - 1].replace(',', ''));
 
-      // Captura limpia de la cantidad o peso al inicio (ej: 0.445, 1.000, 2)
-      const qtyMatch = line.match(/^([0-9]+[.,][0-9]+|[0-9]+)\s+/);
-      const quantity = qtyMatch ? parseFloat(qtyMatch[1].replace(',', '.')) : 1;
-
-      let cleanedName = line;
-      // Remover todos los bloques de precios del texto de la línea
+      let cleanedName = textWithoutQty;
+      // Remover todos los precios detectados
       for (const p of priceMatches) {
         cleanedName = cleanedName.replace(p, '');
       }
-      // Remover el bloque numérico de cantidad inicial para que no deje basura
-      if (qtyMatch) {
-        cleanedName = cleanedName.replace(qtyMatch[0], '');
-      }
-      // Remover únicamente la letra de control de impuestos del final (ej: " A" o " B")
+      // Remover letra de impuesto al final (ej. A, B)
       cleanedName = cleanedName.replace(/\s+[A-Z]\s*$/, '');
       // Limpiar caracteres especiales y espacios múltiples
       cleanedName = cleanedName.replace(/[^a-zA-ZáéíóúÁÉÍÓÚÑñ0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -248,8 +244,10 @@ async function parseMexicanTicket(ocrText) {
     }
   }
 
-  if (totalAmount === 0 && items.length > 0) {
-    totalAmount = items.reduce((sum, item) => sum + item.price, 0);
+  // Respaldo de Monto Total si no se detectó correctamente
+  const calculatedSum = Number(items.reduce((sum, item) => sum + item.price, 0).toFixed(2));
+  if (totalAmount === 0 || (totalAmount > 5000 && calculatedSum > 0 && calculatedSum < 2000)) {
+    totalAmount = calculatedSum;
   }
 
   return {
@@ -259,6 +257,6 @@ async function parseMexicanTicket(ocrText) {
     description: `Ticket escaneado de ${concept}`,
     items: items,
     date: ticketDate || new Date().toISOString().split('T')[0],
-    engine: 'MOBILE_EXPERT_CHEDRAUI_MERCHANT_FIX_V7'
+    engine: 'MOBILE_EXPERT_CHEDRAUI_V9_ISOLATED'
   };
 }
