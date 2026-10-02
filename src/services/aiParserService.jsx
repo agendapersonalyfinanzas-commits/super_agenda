@@ -109,7 +109,7 @@ export async function parseExpenseInput(inputData, onProgress) {
 }
 
 /**
- * Parser Maestro Estructural para Tickets en México (Actualizado y Corregido)
+ * Parser Maestro Estructural para Tickets en México (Afinado para Chedraui: Columnas, Canela y Residuos de Peso)
  */
 async function parseMexicanTicket(ocrText) {
   const lines = ocrText
@@ -195,19 +195,25 @@ async function parseMexicanTicket(ocrText) {
     const priceMatches = line.match(/([0-9,]+\.\d{2})/g);
 
     if (priceMatches && priceMatches.length > 0) {
-      // El total de la línea es la última cifra de la derecha
+      // REGLA DE ORO: El precio total de la línea es estrictamente la ÚLTIMA cifra monetaria de la extrema derecha
       const lineTotal = parseFloat(priceMatches[priceMatches.length - 1].replace(',', ''));
 
-      // Captura correcta de cantidades con decimales (ej: 0.510, 1.000) o enteros
-      const qtyMatch = line.match(/^(\d+\.\d{3}|\d+\.\d+|\d+)/);
-      const quantity = qtyMatch ? parseFloat(qtyMatch[1]) : 1;
+      // Captura limpia de la cantidad o peso al inicio (ej: 0.445, 1.000, 2)
+      const qtyMatch = line.match(/^([0-9]+[.,][0-9]+|[0-9]+)\s+/);
+      const quantity = qtyMatch ? parseFloat(qtyMatch[1].replace(',', '.')) : 1;
 
       let cleanedName = line;
+      // Remover todos los bloques de precios del texto de la línea
       for (const p of priceMatches) {
         cleanedName = cleanedName.replace(p, '');
       }
-      cleanedName = cleanedName.replace(/^\s*(\d+\.\d{3}|\d+\.\d+|\d+)\s*/, '');
+      // Remover el bloque numérico de cantidad inicial para que no deje basura (como "445" o "1")
+      if (qtyMatch) {
+        cleanedName = cleanedName.replace(qtyMatch[0], '');
+      }
+      // Remover únicamente la letra de control de impuestos del final (ej: " A" o " B")
       cleanedName = cleanedName.replace(/\s+[A-Z]\s*$/, '');
+      // Limpiar caracteres especiales y espacios múltiples
       cleanedName = cleanedName.replace(/[^a-zA-ZáéíóúÁÉÍÓÚÑñ0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
 
       if (cleanedName.length >= 3 && !IGNORE_PATTERNS.test(cleanedName) && lineTotal > 0 && lineTotal < 1500) {
@@ -234,6 +240,6 @@ async function parseMexicanTicket(ocrText) {
     description: `Ticket escaneado de ${concept}`,
     items: items,
     date: ticketDate || new Date().toISOString().split('T')[0],
-    engine: 'MOBILE_EXPERT_MEGA_CANONICAL_V4_FIXED'
+    engine: 'MOBILE_EXPERT_CHEDRAUI_FIXED_V6'
   };
 }
