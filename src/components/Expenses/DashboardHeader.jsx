@@ -5,12 +5,17 @@ export default function DashboardHeader({
   user_name, 
   activeUser, 
   onOcrOpen,
+  onExternalJsonInject = () => {}, // ⚡ Callback para inyectar el JSON externo al sistema de verificación
   isAuditor = false,
   usersList = [],
   selectedAuditedUser = null,
   setSelectedAuditedUser = () => {}
 }) {
   const [time, setTime] = useState(new Date());
+
+  // ⚡ Estados para el acordeón del Modo Experto / Asistente IA Externo
+  const [expertOpen, setExpertOpen] = useState(false);
+  const [externalJsonText, setExternalJsonText] = useState('');
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
@@ -29,7 +34,6 @@ export default function DashboardHeader({
     hour12: true
   });
 
-  // Encontrar el nombre completo del usuario auditado actual
   const getAuditedUserFullName = () => {
     if (!selectedAuditedUser) return null;
     const found = usersList.find(u => u.id === selectedAuditedUser);
@@ -40,9 +44,47 @@ export default function DashboardHeader({
   };
 
   const auditedName = getAuditedUserFullName();
-
-  // 🌟 Determinamos el nombre del saludo priorizando al usuario auditado o la prop recibida
   const displayName = auditedName || user_name || activeUser || 'USUARIO';
+
+  // ⚡ Prompt Maestro estandarizado para la extracción de tickets
+  const promptMaestroText = "Analiza este ticket de compra mexicano. Extrae la información con precisión y devuelve EXCLUSIVAMENTE un objeto JSON con: amount, concept, date, category, description, y un arreglo de items (name, quantity, price, subtotal).";
+
+  // ⚡ Manejador para procesar y disparar el modal de verificación con el JSON externo
+  const handleProcessExternalJson = () => {
+    try {
+      const cleanInput = externalJsonText.trim();
+      
+      // Limpieza robusta en caso de que arrastre marcas de código Markdown (```json ... ```)
+      const firstBrace = cleanInput.indexOf('{');
+      const lastBrace = cleanInput.lastIndexOf('}');
+
+      if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+        throw new Error('No se encontró un objeto JSON válido en el texto ingresado.');
+      }
+
+      const jsonString = cleanInput.substring(firstBrace, lastBrace + 1);
+      const parsed = JSON.parse(jsonString);
+
+      if (!parsed.items || !Array.isArray(parsed.items)) {
+        throw new Error('El JSON debe contener un arreglo de "items" válido.');
+      }
+
+      // Ejecutamos la función que abre el modal de verificación con los datos listos
+      onExternalJsonInject({
+        concept: parsed.concept ? String(parsed.concept).toUpperCase() : 'CHEDRAUI',
+        amount: Number(parsed.amount) || 0,
+        date: parsed.date || new Date().toISOString().split('T')[0],
+        category: parsed.category ? String(parsed.category).toUpperCase() : 'SUPERMERCADO',
+        description: parsed.description || 'Importado vía Asistente IA',
+        items: parsed.items
+      });
+
+      setExternalJsonText('');
+      setExpertOpen(false);
+    } catch (err) {
+      alert(`❌ Error al interpretar el JSON: ${err.message}`);
+    }
+  };
 
   return (
     <div className="bg-[#FBBF24] border-4 border-black rounded-3xl p-3 sm:p-4 shadow-[6px_6px_0px_rgba(0,0,0,1)] flex flex-col gap-3 select-none w-full">
@@ -54,65 +96,35 @@ export default function DashboardHeader({
         </h1>
       </div>
 
-      {/* Estilos con vuelo frontal, giro suave y destellos de rayos solares */}
       <style>{`
         @keyframes woodstockErraticFlight {
-          0% {
-            transform: translate(0px, 15px) scale(0.9) rotate(0deg);
-          }
-          25% {
-            transform: translate(32vw, -25px) scale(1.3) rotate(4deg);
-          }
-          48% {
-            transform: translate(68vw, 10px) scale(0.5) rotate(-4deg);
-          }
-          50% {
-            transform: translate(72vw, 15px) scale(0.55) rotate(0deg);
-          }
-          75% {
-            transform: translate(35vw, -20px) scale(1.2) rotate(-4deg);
-          }
-          95% {
-            transform: translate(8vw, 15px) scale(1.0) rotate(4deg);
-          }
-          100% {
-            transform: translate(0px, 15px) scale(0.9) rotate(0deg);
-          }
+          0% { transform: translate(0px, 15px) scale(0.9) rotate(0deg); }
+          25% { transform: translate(32vw, -25px) scale(1.3) rotate(4deg); }
+          48% { transform: translate(68vw, 10px) scale(0.5) rotate(-4deg); }
+          50% { transform: translate(72vw, 15px) scale(0.55) rotate(0deg); }
+          75% { transform: translate(35vw, -20px) scale(1.2) rotate(-4deg); }
+          95% { transform: translate(8vw, 15px) scale(1.0) rotate(4deg); }
+          100% { transform: translate(0px, 15px) scale(0.9) rotate(0deg); }
         }
-        .woodstock-erratic-animation {
-          animation: woodstockErraticFlight 14s ease-in-out infinite;
-        }
+        .woodstock-erratic-animation { animation: woodstockErraticFlight 14s ease-in-out infinite; }
 
         @keyframes woodstockFlip {
-          0%, 46% { 
-            transform: scaleX(1); 
-          }
-          50% { 
-            transform: scaleX(0); 
-          }
-          54%, 96% { 
-            transform: scaleX(-1); 
-          }
-          100% { 
-            transform: scaleX(1); 
-          }
+          0%, 46% { transform: scaleX(1); }
+          50% { transform: scaleX(0); }
+          54%, 96% { transform: scaleX(-1); }
+          100% { transform: scaleX(1); }
         }
-        .woodstock-img-flip {
-          animation: woodstockFlip 14s ease-in-out infinite;
-        }
+        .woodstock-img-flip { animation: woodstockFlip 14s ease-in-out infinite; }
 
         @keyframes spinSlow {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
         }
-        .animate-spin-slow {
-          animation: spinSlow 25s linear infinite;
-        }
+        .animate-spin-slow { animation: spinSlow 25s linear infinite; }
       `}</style>
 
       {/* CONTENEDOR VISUAL PRINCIPAL */}
       <div className="w-full h-56 sm:h-64 relative rounded-2xl overflow-hidden border-2 border-black bg-[#38BDF8] flex items-center justify-center">
-        
         <div className="absolute inset-0 z-0 animate-clouds-loop opacity-85 pointer-events-none"></div>
 
         <div className="absolute inset-0 z-10 pointer-events-none overflow-hidden flex items-center">
@@ -154,7 +166,6 @@ export default function DashboardHeader({
           className="absolute inset-0 w-full h-full object-cover z-30 pointer-events-none"
           onError={(e) => { e.target.style.display = 'none'; }}
         />
-
       </div>
 
       {/* CONTENEDOR INFERIOR */}
@@ -193,16 +204,102 @@ export default function DashboardHeader({
           </div>
         )}
 
-        {/* BOTÓN ESCANEAR TICKET */}
-        <div className="flex justify-start w-full">
-          <button 
-            type="button"
-            onClick={onOcrOpen}
-            className="bg-white border-[3px] border-black rounded-2xl py-2 px-4 font-black text-black shadow-[4px_4px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all flex items-center gap-2 text-xs sm:text-sm uppercase cursor-pointer"
-          >
-            <span className="text-base">📸</span>
-            ESCANEAR TICKET
-          </button>
+        {/* BOTONES DE ESCANEO (LOCAL Y ASISTENTE IA EXTERNO) */}
+        <div className="flex flex-col gap-2 w-full">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button 
+              type="button"
+              onClick={onOcrOpen}
+              className="bg-white border-[3px] border-black rounded-2xl py-2 px-4 font-black text-black shadow-[4px_4px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all flex items-center gap-2 text-xs sm:text-sm uppercase cursor-pointer"
+            >
+              <span className="text-base">📸</span>
+              ESCANEAR TICKET
+            </button>
+
+            {/* ⚡ BOTÓN ASISTENTE IA EXTERNO (MODO EXPERTO) */}
+            <button 
+              type="button"
+              onClick={() => setExpertOpen(!expertOpen)}
+              className="bg-amber-300 hover:bg-amber-400 border-[3px] border-black rounded-2xl py-2 px-4 font-black text-black shadow-[4px_4px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all flex items-center gap-2 text-xs sm:text-sm uppercase cursor-pointer"
+            >
+              <span className="text-base">⚡</span>
+              ASISTENTE IA EXTERNO {expertOpen ? '▲' : '▼'}
+            </button>
+          </div>
+
+          {/* ACORDEÓN DESPLEGABLE: ASISTENTE IA CLAUDE CON PROMPT AUTOMÁTICO */}
+          {expertOpen && (
+            <div className="w-full bg-amber-100 border-[3px] border-black rounded-2xl p-3 sm:p-4 shadow-[4px_4px_0px_rgba(0,0,0,1)] flex flex-col gap-3 font-mono">
+              
+              {/* Cabecera interna del acordeón */}
+              <div className="flex justify-between items-center border-b-2 border-black pb-2">
+                <span className="text-xs font-black uppercase text-amber-950 flex items-center gap-1.5">
+                  <span>🚀</span> Flujo Inteligente de Tickets (Claude)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setExpertOpen(false)}
+                  className="text-xs font-black bg-white border-2 border-black px-2 py-0.5 rounded-lg shadow-[1px_1px_0px_rgba(0,0,0,1)] hover:bg-red-200 cursor-pointer"
+                >
+                  ✕ Cerrar
+                </button>
+              </div>
+
+              {/* Guía Visual Rápida de 3 Pasos */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] font-bold text-black">
+                <div className="bg-white border-2 border-black p-2 rounded-xl shadow-[2px_2px_0px_rgba(0,0,0,1)] flex flex-col gap-1">
+                  <span className="text-amber-600 font-black">PASO 1</span>
+                  <span>📸 Toma la foto de tu ticket fuera de la app.</span>
+                </div>
+                <div className="bg-white border-2 border-black p-2 rounded-xl shadow-[2px_2px_0px_rgba(0,0,0,1)] flex flex-col gap-1">
+                  <span className="text-amber-600 font-black">PASO 2</span>
+                  <span>🧠 Abre Claude (el prompt se escribe solo).</span>
+                </div>
+                <div className="bg-white border-2 border-black p-2 rounded-xl shadow-[2px_2px_0px_rgba(0,0,0,1)] flex flex-col gap-1">
+                  <span className="text-amber-600 font-black">PASO 3</span>
+                  <span>📥 Pega el JSON resultante abajo y verifica.</span>
+                </div>
+              </div>
+
+              {/* Botón de Apertura Rápida de Claude con Prompt Precargado */}
+              <div className="flex flex-col gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const encodedPrompt = encodeURIComponent(promptMaestroText);
+                    window.open(`https://claude.ai/new?q=${encodedPrompt}`, '_blank');
+                  }}
+                  className="w-full bg-amber-300 hover:bg-amber-400 border-2 border-black py-2.5 px-4 rounded-xl font-black text-xs uppercase shadow-[2px_2px_0px_rgba(0,0,0,1)] cursor-pointer text-black flex items-center justify-center gap-2"
+                >
+                  <span>🧠</span> 1. Abrir Claude (Prompt Automático)
+                </button>
+              </div>
+
+              {/* Área de Inyección del JSON */}
+              <div className="flex flex-col gap-1.5 pt-2 border-t-2 border-black">
+                <span className="text-[11px] font-black uppercase text-amber-950">
+                  2. Pega el JSON que te devolvió Claude:
+                </span>
+                <textarea
+                  rows={3}
+                  value={externalJsonText}
+                  onChange={(e) => setExternalJsonText(e.target.value)}
+                  placeholder='{"amount": 935.36, "concept": "CHEDRAUI", "items": [...] }'
+                  className="w-full p-2.5 text-xs font-mono border-2 border-black rounded-xl bg-white text-black focus:outline-none shadow-inner"
+                />
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="button"
+                    onClick={handleProcessExternalJson}
+                    className="bg-amber-400 hover:bg-amber-500 border-2 border-black px-4 py-2 rounded-xl font-black text-xs uppercase shadow-[2px_2px_0px_rgba(0,0,0,1)] cursor-pointer text-black flex items-center gap-1.5"
+                  >
+                    <span>🚀</span> Cargar en Modal de Verificación
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          )}
         </div>
 
         {/* CONTENEDOR DE FECHA Y RELOJ */}

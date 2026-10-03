@@ -66,6 +66,10 @@ export default function DashboardScreen() {
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [retroactiveDate, setRetroactiveDate] = useState(() => new Date().toISOString().split('T')[0]);
 
+  // --- ESTADOS PARA EL MODAL DE VERIFICACIÓN EDITABLE (IA EXTERNA) ---
+  const [isVerificationOpen, setIsVerificationOpen] = useState(false);
+  const [pendingExpenseData, setPendingExpenseData] = useState(null);
+
   const [activeImageTarget, setActiveImageTarget] = useState(null);
   const [customName, setCustomName] = useState('');
   const [customAmount, setCustomAmount] = useState('');
@@ -259,6 +263,46 @@ export default function DashboardScreen() {
     txManager.handleSaveTransaction(processedData, type);
   };
 
+  // 🚀 INTERCEPTOR DEL JSON DEL ASISTENTE IA EXTERNO (ABRE LA LISTA EDITABLE)
+  const handleExternalJsonInject = (parsedData) => {
+    setPendingExpenseData(parsedData);
+    setIsVerificationOpen(true);
+  };
+
+  // 💾 GUARDAR EL GASTO VERIFICADO Y EDITADO DESDE EL MODAL
+  const handleSaveVerifiedExternalExpense = async (finalData) => {
+    try {
+      const transactionData = {
+        concept: finalData.concept || 'TICKET',
+        amount: Number(finalData.amount) || 0,
+        category: finalData.category || 'SUPERMERCADO',
+        transaction_type: 'expense',
+        transaction_date: finalData.date || new Date().toISOString().split('T')[0],
+        description: finalData.description || '',
+        is_ticket: true,
+        items: finalData.items || [],
+        user_id: currentUser?.id || null
+      };
+
+      await txManager.handleSaveTransaction(transactionData, 'expense');
+
+      if (finalData.items && finalData.items.length > 0) {
+        try {
+          await analyzeAndUpdatePrices(finalData.items, transactionData.concept);
+        } catch (priceErr) {
+          console.error('Error al actualizar radar de precios:', priceErr);
+        }
+      }
+
+      setIsVerificationOpen(false);
+      setPendingExpenseData(null);
+      alert(`¡Gasto guardado con éxito!\nConcepto: ${transactionData.concept}\nTotal: ${formatearMoneda(transactionData.amount)}`);
+    } catch (err) {
+      console.error('Error al guardar gasto verificado:', err);
+      alert(`Error al guardar: ${err.message || 'Error desconocido'}`);
+    }
+  };
+
   // 🚀 MANEJADOR PROFESIONAL DE TICKETS OCR CENTRALIZADO A TRAVÉS DE txManager
   const handleScanSuccessOCR = async (payload) => {
     setIsOcrOpen(false);
@@ -274,7 +318,6 @@ export default function DashboardScreen() {
         user_id: currentUser?.id || null
       };
 
-      // Delegamos la persistencia al gestor centralizado de transacciones
       await txManager.handleSaveTransaction(transactionData, transactionData.transaction_type);
 
       if (payload.items && payload.items.length > 0) {
@@ -352,6 +395,7 @@ export default function DashboardScreen() {
             user_name={resolvedDisplayName} 
             activeUser={resolvedDisplayName} 
             onOcrOpen={() => setIsOcrOpen(true)}
+            onExternalJsonInject={handleExternalJsonInject}
             isAuditor={auditorMode}
             usersList={usersList}
             selectedAuditedUser={selectedAuditedUser}
@@ -438,6 +482,15 @@ export default function DashboardScreen() {
 
       <Navigation activeTab={activeTab} setActiveTab={setActiveTab} />
 
+      {/* --- MODAL DE VERIFICACIÓN EDITABLE PARA EL JSON DE IA --- */}
+      {isVerificationOpen && pendingExpenseData && (
+        <VerificationModalEditable 
+          initialData={pendingExpenseData}
+          onClose={() => setIsVerificationOpen(false)}
+          onSave={handleSaveVerifiedExternalExpense}
+        />
+      )}
+
       {txManager.lastSavedTx && (
         <div className="fixed bottom-24 right-6 z-50 bg-black text-white border-4 border-amber-400 p-4 rounded-3xl shadow-[8px_8px_0px_0px_rgba(251,191,36,1)] flex items-center gap-4 font-mono">
           <div>
@@ -476,13 +529,211 @@ export default function DashboardScreen() {
         />
       )}
 
-      {/* Escáner OCR integrado profesionalmente mediante el hook central */}
       {isOcrOpen && (
         <OCRScanner 
           onScanSuccess={handleScanSuccessOCR} 
           onClose={() => setIsOcrOpen(false)} 
         />
       )}
+    </div>
+  );
+}
+
+// --- SUBCOMPONENTE DE MODAL EDITABLE (LISTA DE PRODUCTOS Y PRECIOS) ---
+function VerificationModalEditable({ initialData, onClose, onSave }) {
+  const [concept, setConcept] = useState(initialData.concept || '');
+  const [amount, setAmount] = useState(initialData.amount || 0);
+  const [date, setDate] = useState(initialData.date || new Date().toISOString().split('T')[0]);
+  const [category, setCategory] = useState(initialData.category || 'SUPERMERCADO');
+  const [description, setDescription] = useState(initialData.description || '');
+  const [items, setItems] = useState(initialData.items || []);
+
+  const handleItemChange = (index, field, value) => {
+    const updated = [...items];
+    updated[index][field] = value;
+    
+    if (field === 'price' || field === 'quantity') {
+      const q = Number(updated[index].quantity) || 0;
+      const p = Number(updated[index].price) || 0;
+      updated[index].subtotal = q * p;
+    }
+    
+    setItems(updated);
+    
+    // Recalcular total general automáticamente
+    const newTotal = updated.reduce((sum, item) => sum + (Number(item.subtotal) || 0), 0);
+    setAmount(newTotal);
+  };
+
+  const handleAddItem = () => {
+    setItems([...items, { name: 'NUEVO ARTÍCULO', quantity: 1, price: 0, subtotal: 0 }]);
+  };
+
+  const handleDeleteItem = (index) => {
+    const updated = items.filter((_, i) => i !== index);
+    setItems(updated);
+    const newTotal = updated.reduce((sum, item) => sum + (Number(item.subtotal) || 0), 0);
+    setAmount(newTotal);
+  };
+
+  const handleConfirmSave = () => {
+    onSave({
+      concept,
+      amount: Number(amount),
+      date,
+      category,
+      description,
+      items
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 overflow-y-auto">
+      <div className="bg-white border-4 border-black rounded-3xl p-5 sm:p-6 max-w-2xl w-full shadow-[8px_8px_0px_rgba(0,0,0,1)] flex flex-col gap-4 max-h-[90vh] overflow-y-auto font-mono">
+        
+        <div className="flex justify-between items-center border-b-2 border-black pb-3">
+          <h3 className="font-black text-sm uppercase text-black flex items-center gap-2">
+            <span>✨</span> Verificar y Editar Ticket de Chedraui
+          </h3>
+          <button 
+            type="button" 
+            onClick={onClose} 
+            className="bg-rose-400 hover:bg-rose-500 border-2 border-black px-2.5 py-1 rounded-xl font-black text-xs cursor-pointer shadow-[2px_2px_0px_rgba(0,0,0,1)]"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="text-[10px] font-black uppercase text-gray-700">Concepto:</label>
+            <input 
+              type="text" 
+              value={concept} 
+              onChange={(e) => setConcept(e.target.value.toUpperCase())} 
+              className="w-full border-2 border-black rounded-xl p-2 text-xs font-bold bg-white uppercase"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] font-black uppercase text-gray-700">Total ($):</label>
+            <input 
+              type="number" 
+              value={amount} 
+              onChange={(e) => setAmount(e.target.value)} 
+              className="w-full border-2 border-black rounded-xl p-2 text-xs font-bold bg-amber-50"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] font-black uppercase text-gray-700">Fecha:</label>
+            <input 
+              type="date" 
+              value={date} 
+              onChange={(e) => setDate(e.target.value)} 
+              className="w-full border-2 border-black rounded-xl p-2 text-xs font-bold bg-white"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] font-black uppercase text-gray-700">Categoría:</label>
+            <input 
+              type="text" 
+              value={category} 
+              onChange={(e) => setCategory(e.target.value.toUpperCase())} 
+              className="w-full border-2 border-black rounded-xl p-2 text-xs font-bold bg-white uppercase"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="text-[10px] font-black uppercase text-gray-700">Descripción / Detalles:</label>
+          <textarea 
+            rows={2}
+            value={description} 
+            onChange={(e) => setDescription(e.target.value)} 
+            className="w-full border-2 border-black rounded-xl p-2 text-xs font-mono bg-white"
+          />
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <div className="flex justify-between items-center">
+            <span className="font-black text-xs uppercase text-black">Artículos del Ticket ({items.length}):</span>
+            <button 
+              type="button" 
+              onClick={handleAddItem}
+              className="bg-emerald-300 hover:bg-emerald-400 border-2 border-black px-2.5 py-1 rounded-xl font-black text-[10px] uppercase cursor-pointer shadow-[2px_2px_0px_rgba(0,0,0,1)]"
+            >
+              + Agregar Artículo
+            </button>
+          </div>
+
+          <div className="flex flex-col gap-2 max-h-52 overflow-y-auto pr-1">
+            {items.map((item, idx) => (
+              <div key={idx} className="flex flex-col sm:flex-row gap-2 items-center bg-gray-50 border-2 border-black p-2.5 rounded-xl">
+                <input 
+                  type="text" 
+                  value={item.name} 
+                  onChange={(e) => handleItemChange(idx, 'name', e.target.value.toUpperCase())}
+                  className="flex-1 border-2 border-black rounded-lg p-1.5 text-xs font-bold w-full bg-white uppercase"
+                  placeholder="Nombre"
+                />
+                <div className="flex gap-2 w-full sm:w-auto items-center">
+                  <div className="w-16">
+                    <label className="text-[9px] block text-gray-500 font-bold">Cant.</label>
+                    <input 
+                      type="number" 
+                      value={item.quantity} 
+                      onChange={(e) => handleItemChange(idx, 'quantity', e.target.value)}
+                      className="w-full border-2 border-black rounded-lg p-1.5 text-xs font-bold text-center bg-white"
+                    />
+                  </div>
+                  <div className="w-20">
+                    <label className="text-[9px] block text-gray-500 font-bold">Precio</label>
+                    <input 
+                      type="number" 
+                      value={item.price} 
+                      onChange={(e) => handleItemChange(idx, 'price', e.target.value)}
+                      className="w-full border-2 border-black rounded-lg p-1.5 text-xs font-bold text-center bg-white"
+                    />
+                  </div>
+                  <div className="w-20">
+                    <label className="text-[9px] block text-gray-500 font-bold">Subtotal</label>
+                    <input 
+                      type="number" 
+                      value={item.subtotal} 
+                      disabled
+                      className="w-full border-2 border-black rounded-lg p-1.5 text-xs font-bold bg-gray-200 text-center"
+                    />
+                  </div>
+                  <button 
+                    type="button" 
+                    onClick={() => handleDeleteItem(idx)}
+                    className="bg-rose-400 hover:bg-rose-500 border-2 border-black px-2.5 py-1.5 rounded-lg text-xs font-black self-end sm:self-auto cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2 border-t-2 border-black">
+          <button 
+            type="button" 
+            onClick={onClose}
+            className="bg-gray-200 hover:bg-gray-300 border-2 border-black px-4 py-2 rounded-xl font-black text-xs uppercase cursor-pointer"
+          >
+            Cancelar
+          </button>
+          <button 
+            type="button" 
+            onClick={handleConfirmSave}
+            className="bg-emerald-400 hover:bg-emerald-500 border-2 border-black px-4 py-2 rounded-xl font-black text-xs uppercase cursor-pointer shadow-[2px_2px_0px_rgba(0,0,0,1)] text-black"
+          >
+            💾 Guardar en Finanzas
+          </button>
+        </div>
+
+      </div>
     </div>
   );
 }
