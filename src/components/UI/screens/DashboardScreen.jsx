@@ -218,6 +218,42 @@ export default function DashboardScreen() {
     window.location.href = window.location.origin;
   };
 
+  // 🧠 FUNCIÓN CENTRAL DE APRENDIZAJE AUTOMÁTICO (NUTRIR CEREBRO INTERNO)
+  const recordLearningData = async (userId, storeName, items, ticketDate) => {
+    if (!userId || !items || !Array.isArray(items) || items.length === 0) return;
+    try {
+      const cleanStore = String(storeName || 'COMERCIO').toUpperCase();
+      const dateStr = ticketDate || new Date().toISOString().split('T')[0];
+
+      // 1. Registrar cada ítem en 'price_history'
+      const pricePayload = items.map(item => {
+        const qty = Number(item.quantity) || 1;
+        const prc = Number(item.price) || (item.subtotal ? item.subtotal / qty : 0);
+        return {
+          user_id: userId,
+          store_name: cleanStore,
+          product_name: String(item.name || 'PRODUCTO').toUpperCase(),
+          price: Number(prc.toFixed(2)),
+          quantity: qty,
+          recorded_date: dateStr
+        };
+      });
+
+      await supabase.from('price_history').insert(pricePayload);
+
+      // 2. Registrar o actualizar plantilla en 'store_templates'
+      await supabase.from('store_templates').upsert({
+        user_id: userId,
+        store_name: cleanStore,
+        last_used_date: dateStr,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'user_id, store_name' });
+
+    } catch (learnErr) {
+      console.warn('⚠️ Nota de autoaprendizaje (no afecta el flujo principal):', learnErr.message);
+    }
+  };
+
   const handleCustomButtonSubmit = async (e, detectedItems = []) => {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
     
@@ -237,6 +273,7 @@ export default function DashboardScreen() {
     if (detectedItems && detectedItems.length > 0) {
       try {
         await analyzeAndUpdatePrices(detectedItems, conceptName);
+        await recordLearningData(currentUser?.id, conceptName, detectedItems, retroactiveDate);
       } catch (err) {
         console.error('Error al actualizar el radar de precios:', err);
       }
@@ -269,7 +306,7 @@ export default function DashboardScreen() {
     setIsVerificationOpen(true);
   };
 
-  // 💾 GUARDAR EL GASTO VERIFICADO Y EDITADO DESDE EL MODAL
+  // 💾 GUARDAR EL GASTO VERIFICADO Y EDITADO DESDE EL MODAL + APRENDIZAJE AUTOMÁTICO
   const handleSaveVerifiedExternalExpense = async (finalData) => {
     try {
       const transactionData = {
@@ -289,8 +326,10 @@ export default function DashboardScreen() {
       if (finalData.items && finalData.items.length > 0) {
         try {
           await analyzeAndUpdatePrices(finalData.items, transactionData.concept);
+          // 🧠 Alimentamos el sistema de autoaprendizaje local
+          await recordLearningData(currentUser?.id, transactionData.concept, finalData.items, transactionData.transaction_date);
         } catch (priceErr) {
-          console.error('Error al actualizar radar de precios:', priceErr);
+          console.error('Error al actualizar radar de precios / aprendizaje:', priceErr);
         }
       }
 
@@ -303,7 +342,7 @@ export default function DashboardScreen() {
     }
   };
 
-  // 🚀 MANEJADOR PROFESIONAL DE TICKETS OCR CENTRALIZADO A TRAVÉS DE txManager
+  // 🚀 MANEJADOR PROFESIONAL DE TICKETS OCR CENTRALIZADO + APRENDIZAJE AUTOMÁTICO
   const handleScanSuccessOCR = async (payload) => {
     setIsOcrOpen(false);
     try {
@@ -323,6 +362,8 @@ export default function DashboardScreen() {
       if (payload.items && payload.items.length > 0) {
         try {
           await analyzeAndUpdatePrices(payload.items, transactionData.concept);
+          // 🧠 Alimentamos el sistema de autoaprendizaje local
+          await recordLearningData(currentUser?.id, transactionData.concept, payload.items, transactionData.transaction_date);
         } catch (priceErr) {
           console.error('Error al actualizar el radar de precios con los ítems del ticket:', priceErr);
         }
