@@ -245,21 +245,6 @@ export default function DashboardHeader({
                 </button>
               </div>
 
-              {/* Guía Visual Rápida de 3 Pasos */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] font-bold text-black">
-                <div className="bg-white border-2 border-black p-2 rounded-xl shadow-[2px_2px_0px_rgba(0,0,0,1)] flex flex-col gap-1">
-                  <span className="text-amber-600 font-black">PASO 1</span>
-                  <span>📸 Toma la foto de tu ticket fuera de la app.</span>
-                </div>
-                <div className="bg-white border-2 border-black p-2 rounded-xl shadow-[2px_2px_0px_rgba(0,0,0,1)] flex flex-col gap-1">
-                  <span className="text-amber-600 font-black">PASO 2</span>
-                  <span>🧠 Abre Claude (el prompt se escribe solo).</span>
-                </div>
-                <div className="bg-white border-2 border-black p-2 rounded-xl shadow-[2px_2px_0px_rgba(0,0,0,1)] flex flex-col gap-1">
-                  <span className="text-amber-600 font-black">PASO 3</span>
-                  <span>📥 Pega el JSON resultante abajo y verifica.</span>
-                </div>
-              </div>
 
               {/* Botón de Apertura Rápida de Claude con Prompt Precargado */}
               <div className="flex flex-col gap-2 pt-1">

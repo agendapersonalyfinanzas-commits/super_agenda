@@ -1,5 +1,5 @@
 // src/services/ocrSmartMatcher.js
-import { supabase } from '../../supabaseClient';
+import { supabase } from '../supabaseClient';
 
 /**
  * Calcula la similitud basada en intersección de palabras (Token Similarity)
