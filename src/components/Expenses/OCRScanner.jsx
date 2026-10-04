@@ -4,7 +4,8 @@ import React, { useState } from 'react';
 import { parseExpenseInput } from '../../services/aiParserService';
 import { guardarYCrearPlantilla } from '../../services/templateService';
 import { analyzeAndUpdatePrices } from '../../services/priceRadarService';
-
+import { enhanceScannedItemsWithMemory } from '../../services/ocrSmartMatcher';
+import { supabase } from '../../supabaseClient';
 export default function OCRScanner({ onClose, onScanSuccess }) {
   const [loading, setLoading] = useState(false);
   const [progressStatus, setProgressStatus] = useState('');
@@ -50,6 +51,27 @@ export default function OCRScanner({ onClose, onScanSuccess }) {
               : `${parts[2]}-${parts[1]}-${parts[0]}`;
           }
         }
+
+        setProgressStatus('Consultando memoria de precios y aplicando Fuzzy Matching...');
+        try {
+          const authRes = await supabase.auth.getUser();
+          const authData = authRes ? authRes.data : null;
+          const user = authData ? authData.user : null;
+          
+          if (user && result.items && result.items.length > 0) {
+            const storeName = result.concept || 'SUPERMERCADO';
+            const smartItems = await enhanceScannedItemsWithMemory(result.items, storeName, user.id);
+            result.items = smartItems;
+            
+            const calculatedTotal = smartItems.reduce((sum, item) => sum + (Number(item.subtotal || item.price) || 0), 0);
+            if (calculatedTotal > 0 && (!result.amount || result.amount === 0)) {
+              result.amount = Number(calculatedTotal.toFixed(2));
+            }
+          }
+        } catch (matchErr) {
+          console.warn('⚠️ Nota de Fuzzy Matching:', matchErr);
+        }
+
         setReviewData(result);
       } else {
         throw new Error('No se pudieron extraer datos válidos del ticket.');
@@ -72,6 +94,9 @@ export default function OCRScanner({ onClose, onScanSuccess }) {
   const handleItemPriceChange = (index, newPrice) => {
     const updatedItems = [...(reviewData.items || [])];
     updatedItems[index].price = newPrice;
+    if (updatedItems[index].quantity) {
+      updatedItems[index].subtotal = Number((updatedItems[index].quantity * newPrice).toFixed(2));
+    }
     setReviewData({ ...reviewData, items: updatedItems });
   };
 
@@ -81,12 +106,12 @@ export default function OCRScanner({ onClose, onScanSuccess }) {
   };
 
   const handleAddItem = () => {
-    const updatedItems = [...(reviewData.items || []), { name: 'NUEVO PRODUCTO', price: 0 }];
+    const updatedItems = [...(reviewData.items || []), { name: 'NUEVO PRODUCTO', quantity: 1, price: 0, subtotal: 0 }];
     setReviewData({ ...reviewData, items: updatedItems });
   };
 
   const handleRecalculateTotal = () => {
-    const newTotal = (reviewData.items || []).reduce((sum, item) => sum + (Number(item.price) || 0), 0);
+    const newTotal = (reviewData.items || []).reduce((sum, item) => sum + (Number(item.subtotal) || Number(item.price) || 0), 0);
     setReviewData({ ...reviewData, amount: Number(newTotal.toFixed(2)) });
   };
 
@@ -115,7 +140,6 @@ export default function OCRScanner({ onClose, onScanSuccess }) {
       const finalDateStr = rawDate || new Date().toISOString().split('T')[0];
       const isRetro = finalDateStr < new Date().toISOString().split('T')[0];
 
-      // Objeto limpio unificado que procesará el gestor oficial de la app
       const transactionPayload = {
         amount: amountNum,
         concept: conceptText,
@@ -140,7 +164,6 @@ export default function OCRScanner({ onClose, onScanSuccess }) {
         await analyzeAndUpdatePrices(reviewData.items, conceptText);
       }
 
-      // Devolvemos el payload completo al padre para que lo guarde con los permisos y sesión oficiales
       if (onScanSuccess) {
         onScanSuccess(transactionPayload);
       }
@@ -250,7 +273,7 @@ export default function OCRScanner({ onClose, onScanSuccess }) {
                   type="date" 
                   value={reviewData.date || ''} 
                   onChange={(e) => setReviewData({...reviewData, date: e.target.value})}
-                  className="w-full bg-white border-2 border-black p-2 rounded-xl text-sm font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] focus:outline-none cursor-pointer"
+                  className="w-full bg-white border-2 border-black p-2 rounded-xl text-sm font-bold shadow-[2px_2px_0px_rgba(0,0,0,1)] focus:outline-none cursor-pointer"
                   required
                 />
               </div>
@@ -271,7 +294,7 @@ export default function OCRScanner({ onClose, onScanSuccess }) {
                   step="0.01"
                   value={reviewData.amount || ''} 
                   onChange={(e) => setReviewData({...reviewData, amount: e.target.value})}
-                  className="w-full bg-white border-2 border-black p-2 rounded-xl text-sm font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] focus:outline-none"
+                  className="w-full bg-white border-2 border-black p-2 rounded-xl text-sm font-bold shadow-[2px_2px_0px_rgba(0,0,0,1)] focus:outline-none"
                   required
                 />
               </div>
@@ -281,7 +304,7 @@ export default function OCRScanner({ onClose, onScanSuccess }) {
                 <select 
                   value={reviewData.category || 'SUPERMERCADO'}
                   onChange={(e) => setReviewData({...reviewData, category: e.target.value})}
-                  className="w-full bg-white border-2 border-black p-2 rounded-xl text-sm font-bold uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] focus:outline-none cursor-pointer"
+                  className="w-full bg-white border-2 border-black p-2 rounded-xl text-sm font-bold uppercase shadow-[2px_2px_0px_rgba(0,0,0,1)] focus:outline-none cursor-pointer"
                 >
                   <option value="SUPERMERCADO">SUPERMERCADO</option>
                   <option value="ALIMENTOS">ALIMENTOS</option>
@@ -311,13 +334,14 @@ export default function OCRScanner({ onClose, onScanSuccess }) {
                 <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1">
                   {reviewData.items && reviewData.items.length > 0 ? (
                     reviewData.items.map((it, i) => (
-                      <div key={i} className="flex items-center space-x-1.5 border-b border-stone-200 pb-1">
+                      <div key={i} className={`flex items-center space-x-1.5 border-b border-stone-200 pb-1 ${it.is_auto_corrected ? 'bg-emerald-50 rounded px-1' : ''}`}>
                         <input
                           type="text"
                           value={it.name || ''}
                           onChange={(e) => handleItemNameChange(i, e.target.value)}
                           className="w-3/5 bg-stone-50 border border-black p-1 rounded text-xs font-bold uppercase focus:bg-white focus:outline-none"
                           placeholder="Producto"
+                          title={it.is_auto_corrected ? '✨ Autocorregido por la memoria de la app' : ''}
                         />
                         <div className="w-2/5 flex items-center space-x-1">
                           <span className="text-xs font-black">$</span>
